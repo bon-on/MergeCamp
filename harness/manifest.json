@@ -1,0 +1,39 @@
+{
+  "version": "1",
+  "repoName": "MergeCamp",
+  "description": "iPhone과 Android를 위한 스펙 기반 자연 세션 머지 퍼즐 저장소와 출시/광고 준비 문서.",
+  "policyMode": "warn-block-critical",
+  "stackSummary": "효과음과 햅틱 피드백을 포함한 Flutter 모바일 퍼즐 게임 저장소",
+  "sourcePriority": [
+    "feature spec",
+    "related adr",
+    "repo constraints",
+    "golden rules",
+    "general repo context"
+  ],
+  "detectedProfiles": [],
+  "suggestedPacks": [],
+  "approvedPacks": [],
+  "detectedSignals": [],
+  "paths": {
+    "rulesDir": "harness/rules",
+    "specsDir": "harness/specs",
+    "adrsDir": "harness/adrs",
+    "contractsDir": "harness/contracts",
+    "templatesDir": "harness/templates",
+    "reportsDir": "reports"
+  },
+  "requiredFiles": [
+    "harness/rules/golden-rules.md",
+    "harness/rules/constraints.md",
+    "harness/templates/feature-spec.md",
+    "harness/templates/adr.md",
+    "harness/templates/contract.md"
+  ],
+  "criticalChecks": [
+    "manifest-present",
+    "golden-rules-present",
+    "constraints-present",
+    "feature-spec-has-acceptance"
+  ]
+}
