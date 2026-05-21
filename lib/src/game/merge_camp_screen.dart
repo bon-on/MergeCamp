@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
 
 import 'feedback_fx.dart';
 import 'merge_camp_controller.dart';
@@ -14,6 +16,7 @@ class MergeCampScreen extends StatefulWidget {
 class _MergeCampScreenState extends State<MergeCampScreen> {
   late final MergeCampController _controller;
   late final FeedbackFx _feedback;
+  bool _trailAxeMode = false;
 
   @override
   void initState() {
@@ -38,14 +41,24 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
   }
 
-  Future<void> _handlePlacement(int index) async {
-    final result = _controller.place(index);
+  Future<void> _handleCellTap(int index) async {
+    final result = _trailAxeMode
+        ? _controller.useTrailAxe(index)
+        : _controller.place(index);
+    if (result.action == MergeAction.removed && mounted) {
+      setState(() {
+        _trailAxeMode = false;
+      });
+    }
     switch (result.action) {
       case MergeAction.placed:
         await _feedback.tap();
       case MergeAction.merged:
         await _feedback.merge();
+      case MergeAction.removed:
+        await _feedback.tap();
       case MergeAction.blocked:
+      case MergeAction.noTool:
       case MergeAction.gameOver:
         await _feedback.warning();
     }
@@ -56,56 +69,52 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     final board = _controller.board;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('MergeCamp'),
-        actions: [
-          TextButton(
-            onPressed: _controller.restart,
-            child: const Text('Restart'),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
           child: Column(
             children: [
-              _StatsHeader(controller: _controller),
-              const SizedBox(height: 16),
+              _TopBar(controller: _controller),
+              const SizedBox(height: 8),
+              _ToolBar(
+                controller: _controller,
+                trailAxeMode: _trailAxeMode,
+                onToggleTrailAxe: _controller.canUseTrailAxe
+                    ? () {
+                        setState(() {
+                          _trailAxeMode = !_trailAxeMode;
+                        });
+                      }
+                    : null,
+              ),
+              const SizedBox(height: 10),
               Expanded(
-                child: GridView.builder(
-                  itemCount: board.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemBuilder: (context, index) {
-                    final tier = board[index];
-                    return GestureDetector(
-                      onTap: () => _handlePlacement(index),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: tier == null
-                              ? const Color(0xFF243329)
-                              : _tileColor(tier),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: const Color(0xFF92DE7D),
-                            width: tier == null ? 1 : 2,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            tier == null ? '+' : 'T$tier',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: tier == null
-                                  ? const Color(0xFF7B9381)
-                                  : Colors.black87,
-                            ),
-                          ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final boardSize = math.min(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
+                    return Center(
+                      child: SizedBox.square(
+                        dimension: boardSize,
+                        child: GridView.builder(
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: board.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                          itemBuilder: (context, index) {
+                            final tier = board[index];
+                            return _CampTile(
+                              tier: tier,
+                              trailAxeMode: _trailAxeMode,
+                              onTap: () => _handleCellTap(index),
+                            );
+                          },
                         ),
                       ),
                     );
@@ -116,14 +125,16 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
               Text(
                 _controller.isGameOver
                     ? 'Board jammed. Restart for another run.'
-                    : 'Build groups of 3 or more matching tiles to merge.',
+                    : _trailAxeMode
+                    ? 'Tap an occupied camp tile to clear a path.'
+                    : 'Connect 3 matching camp tiles to raise the camp.',
                 style: const TextStyle(
                   color: Color(0xFFD8E4D9),
                   fontWeight: FontWeight.w600,
                 ),
               ),
               if (_controller.isGameOver) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
                 FilledButton(
                   onPressed: _controller.restart,
                   child: const Text('Restart Run'),
@@ -135,126 +146,274 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       ),
     );
   }
-
-  Color _tileColor(int tier) {
-    const palette = [
-      Color(0xFFB4E197),
-      Color(0xFF7DCF7B),
-      Color(0xFFF4D06F),
-      Color(0xFFF29E4C),
-      Color(0xFFD96C75),
-      Color(0xFFA275D1),
-    ];
-    return palette[(tier - 1).clamp(0, palette.length - 1)];
-  }
 }
 
-class _StatsHeader extends StatelessWidget {
-  const _StatsHeader({required this.controller});
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.controller});
 
   final MergeCampController controller;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            _StatCard(label: 'Score', value: '${controller.score}'),
-            const SizedBox(width: 12),
-            _StatCard(label: 'Moves', value: '${controller.placements}'),
-          ],
+        const Text(
+          'MergeCamp',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _BannerCard(
-                title: 'Next Tile',
-                value: 'T${controller.nextTier}',
-                subtitle: 'Tier cap ${controller.currentTierCap}',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _BannerCard(
-                title: 'Peak Merge',
-                value: 'T${controller.highestTier}',
-                subtitle: 'Pressure ${controller.pressureLabel}',
-              ),
-            ),
-          ],
+        const SizedBox(width: 12),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _MetricPill(label: 'Score', value: '${controller.score}'),
+              const SizedBox(width: 6),
+              _MetricPill(label: 'Moves', value: '${controller.placements}'),
+            ],
+          ),
+        ),
+        IconButton(
+          onPressed: controller.restart,
+          tooltip: 'Restart run',
+          icon: const Icon(Icons.refresh),
         ),
       ],
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
+class _MetricPill extends StatelessWidget {
+  const _MetricPill({required this.label, required this.value});
 
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B2B22),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(color: Color(0xFFA6BBA8))),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2B22),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, color: Color(0xFFA6BBA8)),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolBar extends StatelessWidget {
+  const _ToolBar({
+    required this.controller,
+    required this.trailAxeMode,
+    required this.onToggleTrailAxe,
+  });
+
+  final MergeCampController controller;
+  final bool trailAxeMode;
+  final VoidCallback? onToggleTrailAxe;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _PreviewStrip(tiers: controller.previewTiers)),
+        const SizedBox(width: 10),
+        Tooltip(
+          message: 'Trail Axe clears one occupied tile',
+          child: IconButton.filledTonal(
+            onPressed: onToggleTrailAxe,
+            isSelected: trailAxeMode,
+            icon: Badge.count(
+              count: controller.trailAxes,
+              isLabelVisible: controller.trailAxes > 0,
+              child: const Icon(Icons.hardware),
             ),
+            selectedIcon: Badge.count(
+              count: controller.trailAxes,
+              child: const Icon(Icons.hardware),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewStrip extends StatelessWidget {
+  const _PreviewStrip({required this.tiers});
+
+  final List<int> tiers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2D23),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF42624C)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Next',
+            style: TextStyle(
+              color: Color(0xFFC7DCC9),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 10),
+          for (final tier in tiers) ...[
+            _MiniCampTile(tier: tier),
+            const SizedBox(width: 6),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniCampTile extends StatelessWidget {
+  const _MiniCampTile({required this.tier});
+
+  final int tier;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 42,
+      height: 38,
+      decoration: BoxDecoration(
+        color: _tileColor(tier),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Text(
+          'T$tier',
+          style: const TextStyle(
+            color: Colors.black87,
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
   }
 }
 
-class _BannerCard extends StatelessWidget {
-  const _BannerCard({
-    required this.title,
-    required this.value,
-    required this.subtitle,
+class _CampTile extends StatelessWidget {
+  const _CampTile({
+    required this.tier,
+    required this.trailAxeMode,
+    required this.onTap,
   });
 
-  final String title;
-  final String value;
-  final String subtitle;
+  final int? tier;
+  final bool trailAxeMode;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF314E39), Color(0xFF1C3225)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Color(0xFFC7DCC9))),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+    final tileTier = tier;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        decoration: BoxDecoration(
+          color: tileTier == null
+              ? const Color(0xFF243329)
+              : _tileColor(tileTier),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: trailAxeMode && tileTier != null
+                ? const Color(0xFFFFD166)
+                : const Color(0xFF92DE7D),
+            width: tileTier == null ? 1 : 2,
           ),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(color: Color(0xFFAAC1AC))),
-        ],
+        ),
+        child: Center(
+          child: tileTier == null
+              ? Icon(
+                  trailAxeMode ? Icons.block : Icons.add,
+                  color: const Color(0xFF7B9381),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'T$tileTier',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Icon(_tileIcon(tileTier), color: Colors.black87, size: 22),
+                    const SizedBox(height: 3),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          MergeCampController.campTierName(tileTier),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
+}
+
+Color _tileColor(int tier) {
+  const palette = [
+    Color(0xFFB4E197),
+    Color(0xFFFFC857),
+    Color(0xFF7DCF7B),
+    Color(0xFF4EA8DE),
+    Color(0xFFF29E4C),
+    Color(0xFFA275D1),
+    Color(0xFFF06AA0),
+    Color(0xFF6ED6D1),
+  ];
+  return palette[(tier - 1).clamp(0, palette.length - 1)];
+}
+
+IconData _tileIcon(int tier) {
+  const icons = [
+    Icons.terrain,
+    Icons.local_fire_department,
+    Icons.inventory_2,
+    Icons.cabin,
+    Icons.cell_tower,
+    Icons.holiday_village,
+    Icons.flag,
+    Icons.workspace_premium,
+  ];
+  return icons[(tier - 1).clamp(0, icons.length - 1)];
 }
