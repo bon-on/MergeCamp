@@ -37,6 +37,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["admobApplicationId"] = providers.gradleProperty("ADMOB_ANDROID_APP_ID")
+            .orElse("ca-app-pub-9252543133070309~9754796580")
+            .get()
     }
 
     signingConfigs {

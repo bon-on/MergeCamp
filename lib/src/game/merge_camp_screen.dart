@@ -3,11 +3,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../ads/ad_banner.dart';
+import '../ads/ad_service.dart';
 import 'feedback_fx.dart';
 import 'merge_camp_controller.dart';
 
 class MergeCampScreen extends StatefulWidget {
-  const MergeCampScreen({super.key});
+  const MergeCampScreen({super.key, this.enableAds = false});
+
+  final bool enableAds;
 
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
@@ -17,6 +21,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   late final MergeCampController _controller;
   late final FeedbackFx _feedback;
   bool _trailAxeMode = false;
+  bool _wasGameOver = false;
+  int _completedRuns = 0;
 
   @override
   void initState() {
@@ -36,9 +42,27 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   void _onChanged() {
+    _handleGameOverAds();
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _handleGameOverAds() {
+    if (!widget.enableAds) {
+      _wasGameOver = _controller.isGameOver;
+      return;
+    }
+
+    if (_controller.isGameOver && !_wasGameOver) {
+      _completedRuns += 1;
+      if (_completedRuns % 3 == 0) {
+        AdService.instance.showInterstitialIfReady();
+      } else {
+        unawaited(AdService.instance.loadInterstitial());
+      }
+    }
+    _wasGameOver = _controller.isGameOver;
   }
 
   Future<void> _handleCellTap(int index) async {
@@ -140,6 +164,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                   child: const Text('Restart Run'),
                 ),
               ],
+              AdBanner(enabled: widget.enableAds),
             ],
           ),
         ),

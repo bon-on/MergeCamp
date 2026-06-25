@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../game/merge_camp_screen.dart';
 
 class MergeCampApp extends StatelessWidget {
-  const MergeCampApp({super.key});
+  const MergeCampApp({super.key, this.enableAds = false});
+
+  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +21,7 @@ class MergeCampApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MergeCampScreen(),
+      home: MergeCampScreen(enableAds: enableAds),
     );
   }
 }
