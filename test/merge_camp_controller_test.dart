@@ -29,9 +29,11 @@ void main() {
     );
 
     expect(controller.previewTiers, [1, 2, 1]);
+    final displayedNextTier = controller.nextTier;
 
     controller.place(0);
 
+    expect(controller.board[0], displayedNextTier);
     expect(controller.previewTiers, [2, 1, 2]);
     expect(controller.nextTier, 2);
   });

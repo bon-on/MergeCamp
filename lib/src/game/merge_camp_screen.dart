@@ -22,6 +22,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   late final MergeCampController _controller;
   late final FeedbackFx _feedback;
   bool _trailAxeMode = false;
+  bool _handlingTap = false;
   bool _wasGameOver = false;
   int _completedRuns = 0;
 
@@ -80,25 +81,31 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   Future<void> _handleCellTap(int index) async {
-    final result = _trailAxeMode
-        ? _controller.useTrailAxe(index)
-        : _controller.place(index);
-    if (result.action == MergeAction.removed && mounted) {
-      setState(() {
-        _trailAxeMode = false;
-      });
-    }
-    switch (result.action) {
-      case MergeAction.placed:
-        await _feedback.tap();
-      case MergeAction.merged:
-        await _feedback.merge();
-      case MergeAction.removed:
-        await _feedback.tap();
-      case MergeAction.blocked:
-      case MergeAction.noTool:
-      case MergeAction.gameOver:
-        await _feedback.warning();
+    if (_handlingTap) return;
+    _handlingTap = true;
+    try {
+      final result = _trailAxeMode
+          ? _controller.useTrailAxe(index)
+          : _controller.place(index);
+      if (result.action == MergeAction.removed && mounted) {
+        setState(() {
+          _trailAxeMode = false;
+        });
+      }
+      switch (result.action) {
+        case MergeAction.placed:
+          await _feedback.tap();
+        case MergeAction.merged:
+          await _feedback.merge();
+        case MergeAction.removed:
+          await _feedback.tap();
+        case MergeAction.blocked:
+        case MergeAction.noTool:
+        case MergeAction.gameOver:
+          await _feedback.warning();
+      }
+    } finally {
+      _handlingTap = false;
     }
   }
 

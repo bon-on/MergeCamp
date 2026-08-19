@@ -33,26 +33,39 @@
   <title>MergeCamp</title>
   <link rel="manifest" href="manifest.json">
   <style>
-    .games-home-link {
+    :root { --games-nav-height: calc(48px + env(safe-area-inset-top)); }
+    html, body { height: 100%; margin: 0; }
+    body { padding-top: var(--games-nav-height); }
+    flt-glass-pane {
+      top: var(--games-nav-height) !important;
+      height: calc(100% - var(--games-nav-height)) !important;
+    }
+    .games-nav-bar {
       position: fixed;
       z-index: 2147483647;
-      top: max(12px, env(safe-area-inset-top));
-      right: max(12px, env(safe-area-inset-right));
-      padding: 9px 13px;
-      border: 1px solid rgba(255, 255, 255, .2);
+      inset: 0 0 auto;
+      height: var(--games-nav-height);
+      padding: env(safe-area-inset-top) 12px 0;
+      display: flex;
+      align-items: center;
+      background: #10231b;
+      box-sizing: border-box;
+    }
+    .games-home-link {
+      padding: 8px 12px;
       border-radius: 999px;
       color: white;
-      background: rgba(12, 24, 19, .82);
-      box-shadow: 0 5px 18px rgba(0, 0, 0, .24);
+      background: rgba(255, 255, 255, .1);
       font: 600 14px/1.2 system-ui, sans-serif;
       text-decoration: none;
-      backdrop-filter: blur(8px);
     }
     .games-home-link:focus-visible { outline: 3px solid #c9f36a; outline-offset: 2px; }
   </style>
 </head>
 <body>
-  <a class="games-home-link" href="https://bon-on.github.io/" aria-label="게임 선택 화면으로 돌아가기">← 게임 목록</a>
+  <nav class="games-nav-bar" aria-label="게임 내비게이션">
+    <a class="games-home-link" href="https://bon-on.github.io/" aria-label="게임 선택 화면으로 돌아가기">← 게임 목록</a>
+  </nav>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

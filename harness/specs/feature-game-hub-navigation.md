@@ -19,13 +19,13 @@ required_evidence:
 Players who launch a game from the Bon-on dashboard need an explicit way to return to the game selection screen.
 
 ## Scope
-- Show an always-visible game-list link at the top-right of the web game so it does not cover the title.
+- Reserve a separate navigation bar above the web game and place the game-list link on its left.
 - Navigate directly to https://bon-on.github.io/ without relying on browser history.
 - Keep native mobile behavior and game rules unchanged.
 
 ## Acceptance Criteria
 - The web entry point contains an accessible link to the Bon-on game hub.
-- The link remains visible above the Flutter surface, respects mobile safe areas, and does not cover the top-left game title.
+- The navigation bar remains visible above the Flutter surface, respects mobile safe areas, and reserves its own layout space so no game content is covered.
 - Flutter tests, web build, and harness audit pass.
 
 ## Constraints
