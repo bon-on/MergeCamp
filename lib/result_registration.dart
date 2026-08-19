@@ -7,6 +7,24 @@ const _endpoint =
     'https://qbtooistzfwgtqopsdri.supabase.co/rest/v1/rpc/submit_result';
 const _publishableKey = 'sb_publishable__-21S-4jK5dGPr5pGabA7Q_oD5-CKIX';
 
+String normalizePlayerName(String value) {
+  final clean = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (clean.isEmpty || clean.length > 20) throw const FormatException();
+  return clean;
+}
+
+Map<String, Object> buildResultPayload({
+  required String gameId,
+  required String playerName,
+  required String metric,
+  required int value,
+}) => {
+  'p_game_id': gameId,
+  'p_player_name': normalizePlayerName(playerName),
+  'p_value': value,
+  'p_metric': metric,
+};
+
 Future<void> offerResultRegistration(
   BuildContext context, {
   required String gameId,
@@ -89,12 +107,14 @@ Future<void> offerResultRegistration(
         'Authorization': 'Bearer $_publishableKey',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({
-        'p_game_id': gameId,
-        'p_player_name': name,
-        'p_value': value,
-        'p_metric': metric,
-      }),
+      body: jsonEncode(
+        buildResultPayload(
+          gameId: gameId,
+          playerName: name,
+          metric: metric,
+          value: value,
+        ),
+      ),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('HTTP ${response.statusCode}');
