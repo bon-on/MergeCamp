@@ -114,6 +114,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     final board = _controller.board;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),

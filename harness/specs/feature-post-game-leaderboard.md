@@ -29,6 +29,7 @@ Players should register a trustworthy game-produced result without typing the re
 - The submitted numeric result comes from game state, not player input.
 - Blank or oversized names are rejected.
 - A successful or failed submission gives visible feedback.
+- Opening the mobile keyboard for the name field does not push or resize the game screen behind the dialog.
 - Flutter tests and harness audit pass.
 
 ## Constraints
@@ -39,4 +40,3 @@ Players should register a trustworthy game-produced result without typing the re
 ## Evidence
 - flutter test
 - harness audit
-
