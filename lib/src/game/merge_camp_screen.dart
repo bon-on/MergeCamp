@@ -7,6 +7,7 @@ import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
 import 'feedback_fx.dart';
 import 'merge_camp_controller.dart';
+import '../../result_registration.dart';
 
 class MergeCampScreen extends StatefulWidget {
   const MergeCampScreen({super.key, this.enableAds = false});
@@ -49,6 +50,19 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   void _handleGameOverAds() {
+    if (_controller.isGameOver && !_wasGameOver) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          offerResultRegistration(
+            context,
+            gameId: 'merge-camp',
+            metric: 'score',
+            value: _controller.score,
+            displayValue: '${_controller.score}점',
+          );
+        }
+      });
+    }
     if (!widget.enableAds) {
       _wasGameOver = _controller.isGameOver;
       return;
