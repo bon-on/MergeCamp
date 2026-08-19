@@ -11,5 +11,7 @@ void main() {
     expect(html, contains('← 게임 목록'));
     expect(html, contains('z-index: 2147483647'));
     expect(html, contains('env(safe-area-inset-top)'));
+    expect(html, contains('right: max(12px, env(safe-area-inset-right))'));
+    expect(html, isNot(contains('left: max(12px, env(safe-area-inset-left))')));
   });
 }
