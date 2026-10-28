@@ -42,6 +42,7 @@ iPhone에 직접 설치한 개발 빌드는 서명 만료로 계속 실행되지
 - MVP는 오프라인 단일 플레이를 유지한다.
 - 머지 규칙과 난이도 상승은 결정적이어야 하며 웹 배포 작업에서 변경하지 않는다.
 - 광고 SDK는 네이티브 모바일 배포에만 적용하고, 웹 배포는 광고 없이 실행한다.
+- 예외: `--dart-define=CRAZYGAMES=true`로 만드는 CrazyGames 번들은 `feature-merge-camp-crazygames`가 다룬다. 이 명세의 GitHub Pages 빌드는 계속 광고 없이 유지한다.
 
 ## Evidence
 

@@ -31,6 +31,7 @@ Players who launch a game from the Bon-on dashboard need an explicit way to retu
 ## Constraints
 - Implement navigation in the static web shell only.
 - Do not add a runtime dependency or modify gameplay.
+- Exception: the CrazyGames bundle (`feature-merge-camp-crazygames`) strips this navigation bar at build time because the portal does not allow outbound links.
 
 ## Evidence
 - flutter test

@@ -16,3 +16,7 @@ MergeCamp는 iPhone과 Android를 위한 모바일 머지 퍼즐 게임이다. �
 2. `flutter pub get`을 실행한다.
 3. `flutter test`를 실행한다.
 4. `flutter run`을 실행한다.
+
+## CrazyGames 웹 번들
+
+`tool/build_crazygames.sh`를 실행하면 `build/crazygames/`와 업로드용 `build/merge-camp-crazygames.zip`이 생성된다. 자세한 내용은 `docs/crazygames.md`를 참고한다.

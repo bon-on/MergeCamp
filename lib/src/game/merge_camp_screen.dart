@@ -1,18 +1,29 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
+import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'merge_camp_controller.dart';
 import '../../result_registration.dart';
 
 class MergeCampScreen extends StatefulWidget {
-  const MergeCampScreen({super.key, this.enableAds = false});
+  const MergeCampScreen({
+    super.key,
+    this.enableAds = false,
+    this.platform = const NoopGamePlatform(),
+    this.controller,
+  });
 
   final bool enableAds;
+  final GamePlatform platform;
+
+  /// Injected for tests; when null the screen owns its controller.
+  final MergeCampController? controller;
 
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
@@ -24,64 +35,102 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _trailAxeMode = false;
   bool _handlingTap = false;
   bool _wasGameOver = false;
+  bool _breakAdInProgress = false;
   int _completedRuns = 0;
 
   @override
   void initState() {
     super.initState();
-    _feedback = FeedbackFx();
+    _feedback = FeedbackFx(isMuted: () => widget.platform.isAudioMuted);
     unawaited(_feedback.initialize());
-    _controller = MergeCampController()..addListener(_onChanged);
+    _controller = (widget.controller ?? MergeCampController())
+      ..addListener(_onChanged);
+    _wasGameOver = _controller.isGameOver;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_controller.isGameOver) {
+        widget.platform.gameplayStart();
+      }
+    });
   }
 
   @override
   void dispose() {
     unawaited(_feedback.dispose());
-    _controller
-      ..removeListener(_onChanged)
-      ..dispose();
+    _controller.removeListener(_onChanged);
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
     super.dispose();
   }
 
   void _onChanged() {
-    _handleGameOverAds();
+    final runEnded = _controller.isGameOver && !_wasGameOver;
+    _wasGameOver = _controller.isGameOver;
+    if (runEnded) {
+      widget.platform.gameplayStop();
+      if (widget.platform.allowsResultRegistration) {
+        _offerResultRegistration();
+      }
+      if (widget.enableAds) {
+        _handleRunEndedAds();
+      }
+    }
     if (mounted) {
       setState(() {});
     }
   }
 
-  void _handleGameOverAds() {
-    if (_controller.isGameOver && !_wasGameOver) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          offerResultRegistration(
-            context,
-            gameId: 'merge-camp',
-            metric: 'score',
-            value: _controller.score,
-            displayValue: '${_controller.score}점',
-          );
-        }
-      });
+  void _offerResultRegistration() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        offerResultRegistration(
+          context,
+          gameId: 'merge-camp',
+          metric: 'score',
+          value: _controller.score,
+          displayValue: '${_controller.score}점',
+        );
+      }
+    });
+  }
+
+  void _handleRunEndedAds() {
+    _completedRuns += 1;
+    if (_completedRuns % 3 == 0) {
+      AdService.instance.showInterstitialIfReady();
+    } else {
+      unawaited(AdService.instance.loadInterstitial());
     }
-    if (!widget.enableAds) {
-      _wasGameOver = _controller.isGameOver;
+  }
+
+  Future<void> _restartRun() async {
+    if (_breakAdInProgress) {
       return;
     }
-
-    if (_controller.isGameOver && !_wasGameOver) {
-      _completedRuns += 1;
-      if (_completedRuns % 3 == 0) {
-        AdService.instance.showInterstitialIfReady();
-      } else {
-        unawaited(AdService.instance.loadInterstitial());
+    final afterGameOver = _controller.isGameOver;
+    if (afterGameOver) {
+      setState(() {
+        _breakAdInProgress = true;
+      });
+      try {
+        await widget.platform.showRunBreakAd();
+      } catch (error) {
+        debugPrint('Run break ad failed: $error');
       }
+      if (!mounted) {
+        return;
+      }
+      _breakAdInProgress = false;
     }
-    _wasGameOver = _controller.isGameOver;
+    _trailAxeMode = false;
+    _controller.restart();
+    if (afterGameOver) {
+      widget.platform.gameplayStart();
+    }
   }
 
   Future<void> _handleCellTap(int index) async {
-    if (_handlingTap) return;
+    if (_breakAdInProgress || _handlingTap) return;
     _handlingTap = true;
     try {
       final result = _trailAxeMode
@@ -116,78 +165,86 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-          child: Column(
-            children: [
-              _TopBar(controller: _controller),
-              const SizedBox(height: 8),
-              _ToolBar(
-                controller: _controller,
-                trailAxeMode: _trailAxeMode,
-                onToggleTrailAxe: _controller.canUseTrailAxe
-                    ? () {
-                        setState(() {
-                          _trailAxeMode = !_trailAxeMode;
-                        });
-                      }
-                    : null,
+        child: Center(
+          child: ConstrainedBox(
+            // Keeps the portrait layout readable in landscape desktop iframes.
+            constraints: const BoxConstraints(
+              maxWidth: kIsWeb ? 560 : double.infinity,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              child: Column(
+                children: [
+                  _TopBar(controller: _controller, onRestart: _restartRun),
+                  const SizedBox(height: 8),
+                  _ToolBar(
+                    controller: _controller,
+                    trailAxeMode: _trailAxeMode,
+                    onToggleTrailAxe: _controller.canUseTrailAxe
+                        ? () {
+                            setState(() {
+                              _trailAxeMode = !_trailAxeMode;
+                            });
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final boardSize = math.min(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        );
+                        return Center(
+                          child: SizedBox.square(
+                            dimension: boardSize,
+                            child: GridView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: board.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 4,
+                                    crossAxisSpacing: 8,
+                                    mainAxisSpacing: 8,
+                                  ),
+                              itemBuilder: (context, index) {
+                                final tier = board[index];
+                                return _CampTile(
+                                  tier: tier,
+                                  trailAxeMode: _trailAxeMode,
+                                  onTap: () => _handleCellTap(index),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _controller.isGameOver
+                        ? 'Board jammed. Restart for another run.'
+                        : _trailAxeMode
+                        ? 'Tap an occupied camp tile to clear a path.'
+                        : 'Connect 3 matching camp tiles to raise the camp.',
+                    style: const TextStyle(
+                      color: Color(0xFFD8E4D9),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_controller.isGameOver) ...[
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: _breakAdInProgress ? null : _restartRun,
+                      child: const Text('Restart Run'),
+                    ),
+                  ],
+                  AdBanner(enabled: widget.enableAds),
+                ],
               ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final boardSize = math.min(
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                    );
-                    return Center(
-                      child: SizedBox.square(
-                        dimension: boardSize,
-                        child: GridView.builder(
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: board.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                          itemBuilder: (context, index) {
-                            final tier = board[index];
-                            return _CampTile(
-                              tier: tier,
-                              trailAxeMode: _trailAxeMode,
-                              onTap: () => _handleCellTap(index),
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _controller.isGameOver
-                    ? 'Board jammed. Restart for another run.'
-                    : _trailAxeMode
-                    ? 'Tap an occupied camp tile to clear a path.'
-                    : 'Connect 3 matching camp tiles to raise the camp.',
-                style: const TextStyle(
-                  color: Color(0xFFD8E4D9),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (_controller.isGameOver) ...[
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: _controller.restart,
-                  child: const Text('Restart Run'),
-                ),
-              ],
-              AdBanner(enabled: widget.enableAds),
-            ],
+            ),
           ),
         ),
       ),
@@ -196,9 +253,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.controller});
+  const _TopBar({required this.controller, required this.onRestart});
 
   final MergeCampController controller;
+  final VoidCallback onRestart;
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +278,7 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         IconButton(
-          onPressed: controller.restart,
+          onPressed: onRestart,
           tooltip: 'Restart run',
           icon: const Icon(Icons.refresh),
         ),
@@ -376,61 +434,68 @@ class _CampTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tileTier = tier;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        decoration: BoxDecoration(
-          color: tileTier == null
-              ? const Color(0xFF243329)
-              : _tileColor(tileTier),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: trailAxeMode && tileTier != null
-                ? const Color(0xFFFFD166)
-                : const Color(0xFF92DE7D),
-            width: tileTier == null ? 1 : 2,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: tileTier == null
+                ? const Color(0xFF243329)
+                : _tileColor(tileTier),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: trailAxeMode && tileTier != null
+                  ? const Color(0xFFFFD166)
+                  : const Color(0xFF92DE7D),
+              width: tileTier == null ? 1 : 2,
+            ),
           ),
-        ),
-        child: Center(
-          child: tileTier == null
-              ? Icon(
-                  trailAxeMode ? Icons.block : Icons.add,
-                  color: const Color(0xFF7B9381),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'T$tileTier',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black87,
+          child: Center(
+            child: tileTier == null
+                ? Icon(
+                    trailAxeMode ? Icons.block : Icons.add,
+                    color: const Color(0xFF7B9381),
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'T$tileTier',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Icon(_tileIcon(tileTier), color: Colors.black87, size: 22),
-                    const SizedBox(height: 3),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          MergeCampController.campTierName(tileTier),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black87,
+                      const SizedBox(height: 3),
+                      Icon(
+                        _tileIcon(tileTier),
+                        color: Colors.black87,
+                        size: 22,
+                      ),
+                      const SizedBox(height: 3),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            MergeCampController.campTierName(tileTier),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );

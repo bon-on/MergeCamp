@@ -36,6 +36,7 @@ Players should register a trustworthy game-produced result without typing the re
 - Submission is optional and is the only online dependency.
 - Only the Supabase publishable key may ship in the client.
 - Existing gameplay rules remain unchanged.
+- Exception: the CrazyGames build (`feature-merge-camp-crazygames`) does not offer registration (`GamePlatform.allowsResultRegistration` is false).
 
 ## Evidence
 - flutter test
