@@ -100,4 +100,30 @@ void main() {
 
     expect(controller.isGameOver, isTrue);
   });
+
+  test('lower tiers spawn more often than higher tiers', () {
+    final controller = MergeCampController(random: Random(7));
+    controller.debugLoadBoard(
+      List<int?>.filled(MergeCampController.cellCount, null),
+      nextTier: 1,
+      placements: 40,
+    );
+    expect(controller.currentTierCap, 5);
+
+    final counts = List<int>.filled(6, 0);
+    for (var i = 0; i < 4000; i++) {
+      controller.debugLoadBoard(
+        List<int?>.filled(MergeCampController.cellCount, null),
+        nextTier: 1,
+        placements: 40,
+      );
+      controller.place(0);
+      counts[controller.previewTiers.last] += 1;
+    }
+
+    for (var tier = 1; tier < 5; tier++) {
+      expect(counts[tier], greaterThan(counts[tier + 1]), reason: 'tier $tier');
+    }
+    expect(counts[5], greaterThan(0));
+  });
 }

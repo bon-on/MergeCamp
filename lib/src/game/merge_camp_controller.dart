@@ -25,6 +25,10 @@ class MergeCampController extends ChangeNotifier {
   static const int previewCount = 3;
   static const int maxTrailAxes = 2;
 
+  /// Relative spawn weight per tier, lowest first. Lower tiers come up more
+  /// often so runs lean on building up rather than on direct high-tier drops.
+  static const List<int> tierSpawnWeights = [8, 6, 4, 3, 2];
+
   final Random _random;
   final List<int>? _scriptedTiers;
   late List<int?> _board;
@@ -228,7 +232,18 @@ class MergeCampController extends ChangeNotifier {
     if (scriptedTiers != null && _scriptedIndex < scriptedTiers.length) {
       return scriptedTiers[_scriptedIndex++];
     }
-    return _random.nextInt(currentTierCap) + 1;
+    assert(tierSpawnWeights.length >= currentTierCap);
+    final weights = tierSpawnWeights.take(currentTierCap);
+    var roll = _random.nextInt(weights.reduce((a, b) => a + b));
+    var tier = 1;
+    for (final weight in weights) {
+      if (roll < weight) {
+        return tier;
+      }
+      roll -= weight;
+      tier += 1;
+    }
+    return tier - 1;
   }
 
   static String campTierName(int tier) {
