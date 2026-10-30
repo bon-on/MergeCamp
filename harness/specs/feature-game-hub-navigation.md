@@ -21,6 +21,7 @@ Players who launch a game from the Bon-on dashboard need an explicit way to retu
 ## Scope
 - Reserve a separate navigation bar above the web game and place the game-list link on its left.
 - Navigate directly to https://bon-on.github.io/ without relying on browser history.
+- The Flutter surface renders into a dedicated host element (`#flutter-host`, via `web/flutter_bootstrap.js`) that starts below the navigation bar, so Flutter sizes itself to the remaining area and the nav bar never covers the game HUD.
 - Keep native mobile behavior and game rules unchanged.
 
 ## Acceptance Criteria

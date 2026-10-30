@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
@@ -33,6 +34,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   late final MergeCampController _controller;
   late final FeedbackFx _feedback;
   bool _trailAxeMode = false;
+  // Keyboard cursor; null until the player uses the keyboard.
+  int? _cursor;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'MergeCampBoard');
   bool _handlingTap = false;
   bool _wasGameOver = false;
   bool _breakAdInProgress = false;
@@ -55,6 +59,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     unawaited(_feedback.dispose());
     _controller.removeListener(_onChanged);
     if (widget.controller == null) {
@@ -129,11 +134,83 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
   }
 
-  Future<void> _handleCellTap(int index) async {
+  static const int _boardColumns = 4;
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    // Leave browser/OS shortcuts (Cmd/Ctrl+R etc.) alone.
+    if (HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.keyR) {
+      unawaited(_restartRun());
+      return KeyEventResult.handled;
+    }
+    final size = _controller.board.length;
+    final current = _cursor ?? 0;
+    int? next;
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      next = current % _boardColumns == 0 ? current : current - 1;
+    } else if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.keyD) {
+      next = current % _boardColumns == _boardColumns - 1
+          ? current
+          : current + 1;
+    } else if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.keyW) {
+      next = current - _boardColumns < 0 ? current : current - _boardColumns;
+    } else if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.keyS) {
+      next = current + _boardColumns >= size
+          ? current
+          : current + _boardColumns;
+    }
+    if (next != null) {
+      // The first key press only reveals the cursor without moving it.
+      setState(() => _cursor = _cursor == null ? 0 : next);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.space) {
+      if (_cursor == null) {
+        setState(() => _cursor = 0);
+      } else {
+        unawaited(_handleCellTap(_cursor!));
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.keyX || key == LogicalKeyboardKey.keyE) {
+      if (_cursor == null) {
+        setState(() => _cursor = 0);
+      } else {
+        unawaited(_handleCellTap(_cursor!, forceAxe: true));
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _handleCellTap(
+    int index, {
+    bool forceAxe = false,
+    bool fromPointer = false,
+  }) async {
     if (_breakAdInProgress || _handlingTap) return;
+    if (fromPointer && _cursor != null) {
+      setState(() => _cursor = null);
+    }
     _handlingTap = true;
     try {
-      final result = _trailAxeMode
+      final useAxe = forceAxe || _trailAxeMode;
+      if (forceAxe && !_controller.canUseTrailAxe) {
+        await _feedback.warning();
+        return;
+      }
+      final result = useAxe
           ? _controller.useTrailAxe(index)
           : _controller.place(index);
       if (result.action == MergeAction.removed && mounted) {
@@ -164,85 +241,96 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            // Keeps the portrait layout readable in landscape desktop iframes.
-            constraints: const BoxConstraints(
-              maxWidth: kIsWeb ? 560 : double.infinity,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-              child: Column(
-                children: [
-                  _TopBar(controller: _controller, onRestart: _restartRun),
-                  const SizedBox(height: 8),
-                  _ToolBar(
-                    controller: _controller,
-                    trailAxeMode: _trailAxeMode,
-                    onToggleTrailAxe: _controller.canUseTrailAxe
-                        ? () {
-                            setState(() {
-                              _trailAxeMode = !_trailAxeMode;
-                            });
-                          }
-                        : null,
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final boardSize = math.min(
-                          constraints.maxWidth,
-                          constraints.maxHeight,
-                        );
-                        return Center(
-                          child: SizedBox.square(
-                            dimension: boardSize,
-                            child: GridView.builder(
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: board.length,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 4,
-                                    crossAxisSpacing: 8,
-                                    mainAxisSpacing: 8,
-                                  ),
-                              itemBuilder: (context, index) {
-                                final tier = board[index];
-                                return _CampTile(
-                                  tier: tier,
-                                  trailAxeMode: _trailAxeMode,
-                                  onTap: () => _handleCellTap(index),
-                                );
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _controller.isGameOver
-                        ? 'Board jammed. Restart for another run.'
-                        : _trailAxeMode
-                        ? 'Tap an occupied camp tile to clear a path.'
-                        : 'Connect 3 matching camp tiles to raise the camp.',
-                    style: const TextStyle(
-                      color: Color(0xFFD8E4D9),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (_controller.isGameOver) ...[
+      body: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _onKeyEvent,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              // Keeps the portrait layout readable in landscape desktop iframes.
+              constraints: const BoxConstraints(
+                maxWidth: kIsWeb ? 560 : double.infinity,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                child: Column(
+                  children: [
+                    _TopBar(controller: _controller, onRestart: _restartRun),
                     const SizedBox(height: 8),
-                    FilledButton(
-                      onPressed: _breakAdInProgress ? null : _restartRun,
-                      child: const Text('Restart Run'),
+                    _ToolBar(
+                      controller: _controller,
+                      trailAxeMode: _trailAxeMode,
+                      onToggleTrailAxe: _controller.canUseTrailAxe
+                          ? () {
+                              setState(() {
+                                _trailAxeMode = !_trailAxeMode;
+                              });
+                            }
+                          : null,
                     ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final boardSize = math.min(
+                            constraints.maxWidth,
+                            constraints.maxHeight,
+                          );
+                          return Center(
+                            child: SizedBox.square(
+                              dimension: boardSize,
+                              child: GridView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: board.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 4,
+                                      crossAxisSpacing: 8,
+                                      mainAxisSpacing: 8,
+                                    ),
+                                itemBuilder: (context, index) {
+                                  final tier = board[index];
+                                  return _CampTile(
+                                    tier: tier,
+                                    trailAxeMode: _trailAxeMode,
+                                    highlighted: _cursor == index,
+                                    onTap: () => _handleCellTap(
+                                      index,
+                                      fromPointer: true,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _controller.isGameOver
+                          ? 'Board jammed. Restart for another run.'
+                          : _cursor != null
+                          ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
+                          : _trailAxeMode
+                          ? 'Tap an occupied camp tile to clear a path.'
+                          : 'Connect 3 matching camp tiles to raise the camp.',
+                      style: const TextStyle(
+                        color: Color(0xFFD8E4D9),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (_controller.isGameOver) ...[
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _breakAdInProgress ? null : _restartRun,
+                        child: const Text('Restart Run'),
+                      ),
+                    ],
+                    AdBanner(enabled: widget.enableAds),
                   ],
-                  AdBanner(enabled: widget.enableAds),
-                ],
+                ),
               ),
             ),
           ),
@@ -262,9 +350,15 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Text(
-          'MergeCamp',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        const Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'MergeCamp',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            ),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -425,10 +519,12 @@ class _CampTile extends StatelessWidget {
     required this.tier,
     required this.trailAxeMode,
     required this.onTap,
+    this.highlighted = false,
   });
 
   final int? tier;
   final bool trailAxeMode;
+  final bool highlighted;
   final VoidCallback onTap;
 
   @override
@@ -439,6 +535,7 @@ class _CampTile extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
+          key: highlighted ? const ValueKey('keyboard-cursor') : null,
           duration: const Duration(milliseconds: 160),
           decoration: BoxDecoration(
             color: tileTier == null
@@ -446,10 +543,12 @@ class _CampTile extends StatelessWidget {
                 : _tileColor(tileTier),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: trailAxeMode && tileTier != null
+              color: highlighted
+                  ? Colors.white
+                  : trailAxeMode && tileTier != null
                   ? const Color(0xFFFFD166)
                   : const Color(0xFF92DE7D),
-              width: tileTier == null ? 1 : 2,
+              width: highlighted ? 4 : (tileTier == null ? 1 : 2),
             ),
           ),
           child: Center(
