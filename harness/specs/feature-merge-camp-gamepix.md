@@ -36,7 +36,7 @@ GamePix는 SDK 없이(또는 GamePix SDK만) 동작하는 HTML5 번들을 요구
 
 - `flutter analyze`, `flutter test`가 통과하고, `NoopGamePlatform.gamePix()`가 결과 등록을 막는지 테스트가 검증한다.
 - `tool/build_gamepix.sh`가 성공하고 `build/merge-camp-gamepix.zip`의 루트에 `index.html`이 있다.
-- GamePix 번들 `index.html`에는 `<base href="./">`가 있고, `crazygames`, `bon-on.github.io`, `http(s)://` URL이 없으며, 내비게이션 높이는 0이다. 번들에 `crazygames-sdk` 참조가 없다.
+- GamePix 번들 `index.html`에는 `<base href="./">`가 있고, `crazygames`, `bon-on.github.io`, `http(s)://` URL이 없으며(엔진 로더 상수인 gstatic CanvasKit, GitHub 이슈 URL 제외), 내비게이션 높이는 0이다. 번들에 `crazygames-sdk` 참조가 없다.
 - `main.dart.js`의 `crazygames` 문자열 수를 보고한다(목표 0).
 - `assets/FontManifest.json`에 `Roboto` 패밀리가 있고, headless Chrome 로드 중 외부 호스트 요청이 없다.
 - 640x480과 360x640에서 가로/세로 오버플로 없이 표시된다.
