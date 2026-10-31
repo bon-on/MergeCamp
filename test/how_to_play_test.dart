@@ -252,20 +252,40 @@ void main() {
     expect(_filled(controller), 0);
   });
 
-  testWidgets('Tab and shortcuts stay unhandled while the card is open', (
+  testWidgets('F5 and shortcuts stay unhandled while the card has focus', (
     tester,
   ) async {
     await _pump(tester, _FakeStore());
-    // Tab reaches Flutter's focus traversal instead of being swallowed.
-    final before = FocusManager.instance.primaryFocus;
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
-    expect(FocusManager.instance.primaryFocus, isNot(before));
+    expect(
+      FocusManager.instance.primaryFocus?.toString(),
+      contains('HowToPlayOverlay'),
+    );
     expect(await tester.sendKeyEvent(LogicalKeyboardKey.f5), isFalse);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     expect(await tester.sendKeyEvent(LogicalKeyboardKey.keyR), isFalse);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     expect(_title, findsOneWidget);
+  });
+
+  testWidgets('Tab stays inside the card and Escape still closes it', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeStore());
+    await tester.pump();
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      final focused = FocusManager.instance.primaryFocus!.context!;
+      expect(
+        focused.findAncestorWidgetOfExactType<HowToPlayOverlay>(),
+        isNotNull,
+        reason: "Tab $i left the card: ${FocusManager.instance.primaryFocus}",
+      );
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(_title, findsNothing);
   });
 
   for (final size in const [Size(390, 844), Size(844, 390), Size(1280, 720)]) {

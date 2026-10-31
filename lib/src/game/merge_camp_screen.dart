@@ -41,7 +41,12 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _trailAxeMode = false;
   // Keyboard cursor; null until the player uses the keyboard.
   int? _cursor;
-  final FocusNode _focusNode = FocusNode(debugLabel: 'MergeCampBoard');
+  // Game keys bubble up to this node from any focused child, so it never
+  // needs a Tab stop; skipping it keeps Tab inside the how-to-play card.
+  final FocusNode _focusNode = FocusNode(
+    debugLabel: 'MergeCampBoard',
+    skipTraversal: true,
+  );
   bool _handlingTap = false;
   bool _wasGameOver = false;
   bool _breakAdInProgress = false;
@@ -310,96 +315,102 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         onKeyEvent: _onKeyEvent,
         child: Stack(
           children: [
-            SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  // Keeps the portrait layout readable in landscape desktop iframes.
-                  constraints: const BoxConstraints(
-                    maxWidth: kIsWeb ? 560 : double.infinity,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-                    child: Column(
-                      children: [
-                        _TopBar(
-                          controller: _controller,
-                          onRestart: _restartRun,
-                          onHelp: _openHowToPlay,
-                        ),
-                        const SizedBox(height: 8),
-                        _ToolBar(
-                          controller: _controller,
-                          trailAxeMode: _trailAxeMode,
-                          onToggleTrailAxe: _controller.canUseTrailAxe
-                              ? () {
-                                  setState(() {
-                                    _trailAxeMode = !_trailAxeMode;
-                                  });
-                                }
-                              : null,
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final boardSize = math.min(
-                                constraints.maxWidth,
-                                constraints.maxHeight,
-                              );
-                              return Center(
-                                child: SizedBox.square(
-                                  dimension: boardSize,
-                                  child: GridView.builder(
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    itemCount: board.length,
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 4,
-                                          crossAxisSpacing: 8,
-                                          mainAxisSpacing: 8,
-                                        ),
-                                    itemBuilder: (context, index) {
-                                      final tier = board[index];
-                                      return _CampTile(
-                                        tier: tier,
-                                        trailAxeMode: _trailAxeMode,
-                                        highlighted: _cursor == index,
-                                        onTap: () => _handleCellTap(
-                                          index,
-                                          fromPointer: true,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
+            // Keep Tab traversal inside the how-to-play card while it is open.
+            ExcludeFocus(
+              excluding: _tutorialBlocking,
+              child: SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    // Keeps the portrait layout readable in landscape desktop iframes.
+                    constraints: const BoxConstraints(
+                      maxWidth: kIsWeb ? 560 : double.infinity,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                      child: Column(
+                        children: [
+                          _TopBar(
+                            controller: _controller,
+                            onRestart: _restartRun,
+                            onHelp: _openHowToPlay,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _controller.isGameOver
-                              ? 'Board jammed. Restart for another run.'
-                              : _cursor != null
-                              ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
-                              : _trailAxeMode
-                              ? 'Tap an occupied camp tile to clear a path.'
-                              : 'Connect 3 matching camp tiles to raise the camp.',
-                          style: const TextStyle(
-                            color: Color(0xFFD8E4D9),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (_controller.isGameOver) ...[
                           const SizedBox(height: 8),
-                          FilledButton(
-                            onPressed: _breakAdInProgress ? null : _restartRun,
-                            child: const Text('Restart Run'),
+                          _ToolBar(
+                            controller: _controller,
+                            trailAxeMode: _trailAxeMode,
+                            onToggleTrailAxe: _controller.canUseTrailAxe
+                                ? () {
+                                    setState(() {
+                                      _trailAxeMode = !_trailAxeMode;
+                                    });
+                                  }
+                                : null,
                           ),
+                          const SizedBox(height: 10),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final boardSize = math.min(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                );
+                                return Center(
+                                  child: SizedBox.square(
+                                    dimension: boardSize,
+                                    child: GridView.builder(
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: board.length,
+                                      gridDelegate:
+                                          const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 4,
+                                            crossAxisSpacing: 8,
+                                            mainAxisSpacing: 8,
+                                          ),
+                                      itemBuilder: (context, index) {
+                                        final tier = board[index];
+                                        return _CampTile(
+                                          tier: tier,
+                                          trailAxeMode: _trailAxeMode,
+                                          highlighted: _cursor == index,
+                                          onTap: () => _handleCellTap(
+                                            index,
+                                            fromPointer: true,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _controller.isGameOver
+                                ? 'Board jammed. Restart for another run.'
+                                : _cursor != null
+                                ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
+                                : _trailAxeMode
+                                ? 'Tap an occupied camp tile to clear a path.'
+                                : 'Connect 3 matching camp tiles to raise the camp.',
+                            style: const TextStyle(
+                              color: Color(0xFFD8E4D9),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (_controller.isGameOver) ...[
+                            const SizedBox(height: 8),
+                            FilledButton(
+                              onPressed: _breakAdInProgress
+                                  ? null
+                                  : _restartRun,
+                              child: const Text('Restart Run'),
+                            ),
+                          ],
+                          AdBanner(enabled: widget.enableAds),
                         ],
-                        AdBanner(enabled: widget.enableAds),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -407,8 +418,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
             ),
             // Taps must not reach the board before the seen-flag read
             // decides whether the how-to-play card opens.
-            if (_tutorialLoading)
-              const Positioned.fill(child: AbsorbPointer()),
+            if (_tutorialLoading) const Positioned.fill(child: AbsorbPointer()),
             if (_showHowTo)
               Positioned.fill(
                 child: HowToPlayOverlay(

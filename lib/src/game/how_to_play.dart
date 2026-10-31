@@ -91,29 +91,38 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
     }
   }
 
+  static final Set<LogicalKeyboardKey> _cardKeys = {
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.space,
+    LogicalKeyboardKey.escape,
+    LogicalKeyboardKey.arrowRight,
+    LogicalKeyboardKey.arrowLeft,
+  };
+
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     final key = event.logicalKey;
-    // Keep Tab traversal and browser/OS shortcuts working.
-    if (key == LogicalKeyboardKey.tab ||
+    // Only the card's own keys are handled here. Everything else (Tab, F5,
+    // Cmd/Ctrl shortcuts) bubbles up: the game screen blocks game keys while
+    // the card is open and leaves browser/OS shortcuts alone.
+    if (!_cardKeys.contains(key) ||
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed ||
         HardwareKeyboard.instance.isAltPressed) {
       return KeyEventResult.ignored;
     }
     if (event is KeyDownEvent) {
-      if (key == LogicalKeyboardKey.enter ||
-          key == LogicalKeyboardKey.numpadEnter ||
-          key == LogicalKeyboardKey.space) {
-        _next();
-      } else if (key == LogicalKeyboardKey.escape) {
+      if (key == LogicalKeyboardKey.escape) {
         widget.onClose();
       } else if (key == LogicalKeyboardKey.arrowRight) {
         if (!_isLast) _next();
       } else if (key == LogicalKeyboardKey.arrowLeft) {
         _previous();
+      } else {
+        _next();
       }
     }
-    // Swallow everything else so game keys never fire behind the card.
+    // Repeats and key-ups of card keys are swallowed without acting.
     return KeyEventResult.handled;
   }
 
