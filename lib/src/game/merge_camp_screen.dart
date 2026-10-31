@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
+import '../audio/sound_mute_store.dart';
 import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'how_to_play.dart';
@@ -20,6 +21,7 @@ class MergeCampScreen extends StatefulWidget {
     this.platform = const NoopGamePlatform(),
     this.controller,
     this.howToPlayStore = const HowToPlayStore(),
+    this.soundMuteStore = const SoundMuteStore(),
   });
 
   final bool enableAds;
@@ -30,6 +32,9 @@ class MergeCampScreen extends StatefulWidget {
 
   /// First-run tutorial flag storage; tests inject a fake.
   final HowToPlayStore howToPlayStore;
+
+  /// Persisted user mute choice; tests inject a fake.
+  final SoundMuteStore soundMuteStore;
 
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
@@ -47,6 +52,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     debugLabel: 'MergeCampBoard',
     skipTraversal: true,
   );
+  // User sound toggle; effective mute also includes the platform mute.
+  bool _soundMuted = false;
+  bool _soundTouched = false;
   bool _handlingTap = false;
   bool _wasGameOver = false;
   bool _breakAdInProgress = false;
@@ -65,11 +73,40 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   void initState() {
     super.initState();
     unawaited(_checkTutorial());
-    _feedback = FeedbackFx(isMuted: () => widget.platform.isAudioMuted);
+    unawaited(_loadSoundMuted());
+    _feedback = FeedbackFx(
+      isMuted: () => _soundMuted || widget.platform.isAudioMuted,
+    );
     unawaited(_feedback.initialize());
     _controller = (widget.controller ?? MergeCampController())
       ..addListener(_onChanged);
     _wasGameOver = _controller.isGameOver;
+  }
+
+  Future<void> _loadSoundMuted() async {
+    var muted = false;
+    try {
+      muted = await widget.soundMuteStore.loadMuted();
+    } catch (_) {}
+    // A toggle made before the load finished wins over the stored value.
+    if (!mounted || _soundTouched) return;
+    setState(() => _soundMuted = muted);
+  }
+
+  void _toggleSound() {
+    final muted = !_soundMuted;
+    setState(() {
+      _soundTouched = true;
+      _soundMuted = muted;
+    });
+    _focusNode.requestFocus();
+    unawaited(_saveSoundMuted(muted));
+  }
+
+  Future<void> _saveSoundMuted(bool muted) async {
+    try {
+      await widget.soundMuteStore.saveMuted(muted);
+    } catch (_) {}
   }
 
   Future<void> _checkTutorial() async {
@@ -333,6 +370,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             controller: _controller,
                             onRestart: _restartRun,
                             onHelp: _openHowToPlay,
+                            soundMuted: _soundMuted,
+                            onToggleSound: _toggleSound,
                           ),
                           const SizedBox(height: 8),
                           _ToolBar(
@@ -459,11 +498,15 @@ class _TopBar extends StatelessWidget {
     required this.controller,
     required this.onRestart,
     required this.onHelp,
+    required this.soundMuted,
+    required this.onToggleSound,
   });
 
   final MergeCampController controller;
   final VoidCallback onRestart;
   final VoidCallback onHelp;
+  final bool soundMuted;
+  final VoidCallback onToggleSound;
 
   @override
   Widget build(BuildContext context) {
@@ -498,6 +541,13 @@ class _TopBar extends StatelessWidget {
           onPressed: onHelp,
           tooltip: 'How to play',
           icon: const Icon(Icons.help_outline),
+        ),
+        IconButton(
+          onPressed: onToggleSound,
+          tooltip: soundMuted ? 'Sound off' : 'Sound on',
+          icon: Icon(
+            soundMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+          ),
         ),
         IconButton(
           onPressed: onRestart,

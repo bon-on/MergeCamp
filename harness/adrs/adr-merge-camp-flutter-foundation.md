@@ -4,6 +4,7 @@ title: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합 사용
 status: accepted
 related_specs:
   - feature-merge-camp-mvp
+  - feature-sound-effects
 ---
 
 # ADR: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합을 사용

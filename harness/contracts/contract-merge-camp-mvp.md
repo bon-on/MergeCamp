@@ -4,6 +4,7 @@ title: MergeCamp MVP 구현
 status: active
 related_specs:
   - feature-merge-camp-mvp
+  - feature-sound-effects
 evidence_files:
   - reports/merge-camp-audit-report.md
   - reports/merge-camp-plan-report.md
