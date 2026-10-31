@@ -49,7 +49,7 @@ class MainActivity : FlutterActivity() {
     private fun playSound(asset: String, assignPlayer: (MediaPlayer?) -> Unit) {
         runCatching {
             val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(asset)
-            val descriptor = assets.openFd("flutter_assets/$key")
+            val descriptor = assets.openFd(key)
             val player = MediaPlayer()
             player.setAudioAttributes(
                 AudioAttributes.Builder()
