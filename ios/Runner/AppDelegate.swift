@@ -105,14 +105,9 @@ import UIKit
 
   private func assetURL(for asset: String) -> URL? {
     let assetKey = FlutterDartProject.lookupKey(forAsset: asset)
-    let appFrameworkURL = Bundle.main.bundleURL
-      .appendingPathComponent("Frameworks/App.framework/flutter_assets", isDirectory: true)
-      .appendingPathComponent(assetKey)
-
-    if FileManager.default.fileExists(atPath: appFrameworkURL.path) {
-      return appFrameworkURL
-    }
-
-    return Bundle.main.resourceURL?.appendingPathComponent(assetKey)
+    // The lookup key is already relative to the app bundle
+    // (Frameworks/App.framework/flutter_assets/...).
+    let url = Bundle.main.bundleURL.appendingPathComponent(assetKey)
+    return FileManager.default.fileExists(atPath: url.path) ? url : nil
   }
 }
