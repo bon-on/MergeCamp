@@ -5,7 +5,9 @@ import 'game_platform_factory_stub.dart'
 /// Hooks a distribution portal needs from the game loop.
 ///
 /// Mobile and plain web builds use [NoopGamePlatform]; CrazyGames web builds
-/// (`--dart-define=CRAZYGAMES=true`) use the SDK-backed implementation.
+/// (`--dart-define=CRAZYGAMES=true`) use the SDK-backed implementation, and
+/// GamePix web builds (`--dart-define=GAMEPIX=true`) use [NoopGamePlatform.gamePix]
+/// (no SDK, no external network, no ads).
 abstract class GamePlatform {
   const GamePlatform();
 
@@ -27,7 +29,10 @@ abstract class GamePlatform {
 }
 
 class NoopGamePlatform extends GamePlatform {
-  const NoopGamePlatform();
+  const NoopGamePlatform({this.allowsResultRegistration = true});
+
+  /// GamePix portal build: SDK-free, no ads, no result upload.
+  const NoopGamePlatform.gamePix() : allowsResultRegistration = false;
 
   @override
   Future<void> initialize() async {}
@@ -45,7 +50,7 @@ class NoopGamePlatform extends GamePlatform {
   bool get isAudioMuted => false;
 
   @override
-  bool get allowsResultRegistration => true;
+  final bool allowsResultRegistration;
 }
 
 GamePlatform createGamePlatform() => platform_factory.createGamePlatform();

@@ -3,6 +3,7 @@ id: contract-merge-camp-crazygames
 title: MergeCamp CrazyGames 웹 배포 계약
 status: active
 related_specs:
+  - feature-merge-camp-gamepix
   - feature-merge-camp-crazygames
 evidence_files:
   - docs/crazygames.md

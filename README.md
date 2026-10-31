@@ -22,3 +22,11 @@ MergeCamp는 iPhone과 Android를 위한 모바일 머지 퍼즐 게임이다. �
 ## CrazyGames 웹 번들
 
 `tool/build_crazygames.sh`를 실행하면 `build/crazygames/`와 업로드용 `build/merge-camp-crazygames.zip`이 생성된다. 자세한 내용은 `docs/crazygames.md`를 참고한다.
+
+## GamePix 웹 번들
+
+`tool/build_gamepix.sh`를 실행하면 `build/gamepix/`와 업로드용 `build/merge-camp-gamepix.zip`이 생성된다(SDK 없음, 외부 링크/광고/결과 업로드 없음). 자세한 내용은 `docs/gamepix.md`를 참고한다.
+
+## 폰트 라이선스
+
+웹 빌드가 외부 폰트를 받지 않도록 Roboto(Apache License 2.0)를 `assets/fonts/`에 번들한다. 라이선스 전문은 `assets/fonts/Roboto_LICENSE.txt`에 있다.

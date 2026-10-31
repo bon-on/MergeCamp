@@ -61,6 +61,33 @@
       text-decoration: none;
     }
     .games-home-link:focus-visible { outline: 3px solid #c9f36a; outline-offset: 2px; }
+    /* Initial-load screen; removed once Flutter paints its first frame. */
+    #game-loader {
+      position: fixed;
+      z-index: 1;
+      inset: var(--games-nav-height) 0 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: #12211A;
+      color: #f2f7f4;
+      font: 700 24px/1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      letter-spacing: .02em;
+      transition: opacity .25s ease-out;
+    }
+    #game-loader.done { opacity: 0; pointer-events: none; }
+    #game-loader .spinner {
+      width: 40px;
+      height: 40px;
+      box-sizing: border-box;
+      border: 4px solid rgba(255, 255, 255, .18);
+      border-top-color: #c9f36a;
+      border-radius: 50%;
+      animation: game-loader-spin .9s linear infinite;
+    }
+    @keyframes game-loader-spin { to { transform: rotate(360deg); } }
     body {
       overflow: hidden;
       touch-action: none;
@@ -82,7 +109,33 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <div id="game-loader" role="status" aria-live="polite">
+    <div class="spinner"></div>
+    <div>MergeCamp</div>
+  </div>
   <div id="flutter-host"></div>
+  <script>
+    (function () {
+      var loader = document.getElementById('game-loader');
+      var host = document.getElementById('flutter-host');
+      var finished = false;
+      function hide() {
+        if (finished || !loader) return;
+        finished = true;
+        loader.classList.add('done');
+        setTimeout(function () { loader.remove(); }, 400);
+      }
+      window.addEventListener('flutter-first-frame', hide);
+      document.addEventListener('flutter-first-frame', hide, true);
+      // Fallback if the event is missed: hide shortly after the view is mounted.
+      new MutationObserver(function (_, observer) {
+        if (host.querySelector('flutter-view, flt-glass-pane')) {
+          observer.disconnect();
+          setTimeout(hide, 1500);
+        }
+      }).observe(host, { childList: true, subtree: true });
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

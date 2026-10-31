@@ -60,4 +60,4 @@ cd build && python3 -m http.server 8765
 
 - 키보드 조작은 없다. 클릭/탭만으로 전체 플레이가 가능하다.
 - 보상형 광고, 배너, Data/User 모듈은 아직 쓰지 않는다.
-- Material 기본 폰트(Roboto)의 fallback은 여전히 Google 폰트 CDN에서 받을 수 있다.
+- Roboto는 `assets/fonts/`에 번들되어 있어 런타임에 Google 폰트 CDN 요청이 없다.
