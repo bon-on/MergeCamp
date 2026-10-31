@@ -2,9 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
 import 'package:merge_camp/src/platform/game_platform.dart';
+
+class _SeenStore extends HowToPlayStore {
+  const _SeenStore();
+  @override
+  Future<bool> loadSeen() async => true;
+  @override
+  Future<void> markSeen() async {}
+}
 
 class _FakePlatform extends GamePlatform {
   _FakePlatform({this.allowsResultRegistration = false});
@@ -56,7 +65,11 @@ Future<void> _pumpScreen(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
-      home: MergeCampScreen(platform: platform, controller: controller),
+      home: MergeCampScreen(
+        platform: platform,
+        controller: controller,
+        howToPlayStore: const _SeenStore(),
+      ),
     ),
   );
   await tester.pump();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../game/how_to_play.dart';
 import '../game/merge_camp_screen.dart';
 import '../platform/game_platform.dart';
 
@@ -8,10 +9,12 @@ class MergeCampApp extends StatelessWidget {
     super.key,
     this.enableAds = false,
     this.platform = const NoopGamePlatform(),
+    this.howToPlayStore = const HowToPlayStore(),
   });
 
   final bool enableAds;
   final GamePlatform platform;
+  final HowToPlayStore howToPlayStore;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +30,11 @@ class MergeCampApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: MergeCampScreen(enableAds: enableAds, platform: platform),
+      home: MergeCampScreen(
+        enableAds: enableAds,
+        platform: platform,
+        howToPlayStore: howToPlayStore,
+      ),
     );
   }
 }

@@ -3,8 +3,17 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+
+class _SeenStore extends HowToPlayStore {
+  const _SeenStore();
+  @override
+  Future<bool> loadSeen() async => true;
+  @override
+  Future<void> markSeen() async {}
+}
 
 Future<MergeCampController> _pump(
   WidgetTester tester, {
@@ -35,7 +44,12 @@ Future<MergeCampController> _pump(
   );
   addTearDown(controller.dispose);
   await tester.pumpWidget(
-    MaterialApp(home: MergeCampScreen(controller: controller)),
+    MaterialApp(
+      home: MergeCampScreen(
+        controller: controller,
+        howToPlayStore: const _SeenStore(),
+      ),
+    ),
   );
   await tester.pump();
   return controller;

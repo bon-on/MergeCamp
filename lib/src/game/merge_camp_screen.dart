@@ -9,6 +9,7 @@ import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
 import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
+import 'how_to_play.dart';
 import 'merge_camp_controller.dart';
 import '../../result_registration.dart';
 
@@ -18,6 +19,7 @@ class MergeCampScreen extends StatefulWidget {
     this.enableAds = false,
     this.platform = const NoopGamePlatform(),
     this.controller,
+    this.howToPlayStore = const HowToPlayStore(),
   });
 
   final bool enableAds;
@@ -25,6 +27,9 @@ class MergeCampScreen extends StatefulWidget {
 
   /// Injected for tests; when null the screen owns its controller.
   final MergeCampController? controller;
+
+  /// First-run tutorial flag storage; tests inject a fake.
+  final HowToPlayStore howToPlayStore;
 
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
@@ -41,20 +46,56 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _wasGameOver = false;
   bool _breakAdInProgress = false;
   int _completedRuns = 0;
+  // The tutorial blocks all game input while the first-run check is pending
+  // (_tutorialLoading) and while the card is open (_showHowTo).
+  bool _tutorialLoading = true;
+  bool _showHowTo = false;
+
+  // Whether the platform currently believes gameplay is running.
+  bool _gameplayActive = false;
+
+  bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
 
   @override
   void initState() {
     super.initState();
+    unawaited(_checkTutorial());
     _feedback = FeedbackFx(isMuted: () => widget.platform.isAudioMuted);
     unawaited(_feedback.initialize());
     _controller = (widget.controller ?? MergeCampController())
       ..addListener(_onChanged);
     _wasGameOver = _controller.isGameOver;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_controller.isGameOver) {
-        widget.platform.gameplayStart();
-      }
+  }
+
+  Future<void> _checkTutorial() async {
+    var seen = false;
+    try {
+      seen = await widget.howToPlayStore.loadSeen();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _tutorialLoading = false;
+      _showHowTo = !seen;
     });
+    _syncGameplay();
+  }
+
+  void _openHowToPlay() {
+    setState(() => _showHowTo = true);
+    _syncGameplay();
+  }
+
+  void _closeHowToPlay() {
+    setState(() => _showHowTo = false);
+    _syncGameplay();
+    _focusNode.requestFocus();
+    unawaited(_markTutorialSeen());
+  }
+
+  Future<void> _markTutorialSeen() async {
+    try {
+      await widget.howToPlayStore.markSeen();
+    } catch (_) {}
   }
 
   @override
@@ -72,7 +113,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     final runEnded = _controller.isGameOver && !_wasGameOver;
     _wasGameOver = _controller.isGameOver;
     if (runEnded) {
-      widget.platform.gameplayStop();
+      _syncGameplay();
       if (widget.platform.allowsResultRegistration) {
         _offerResultRegistration();
       }
@@ -129,8 +170,19 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
     _trailAxeMode = false;
     _controller.restart();
-    if (afterGameOver) {
+    _syncGameplay();
+  }
+
+  /// Reports gameplay start/stop to the platform exactly on transitions:
+  /// running only while no tutorial is open and the run is not over.
+  void _syncGameplay() {
+    final wantActive = !_tutorialBlocking && !_controller.isGameOver;
+    if (wantActive == _gameplayActive) return;
+    _gameplayActive = wantActive;
+    if (wantActive) {
       widget.platform.gameplayStart();
+    } else {
+      widget.platform.gameplayStop();
     }
   }
 
@@ -138,6 +190,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
+    // The how-to-play card owns the keyboard while it is open.
+    if (_tutorialBlocking) return KeyEventResult.handled;
     // Leave browser/OS shortcuts (Cmd/Ctrl+R etc.) alone.
     if (HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed ||
@@ -245,106 +299,148 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         focusNode: _focusNode,
         autofocus: true,
         onKeyEvent: _onKeyEvent,
-        child: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              // Keeps the portrait layout readable in landscape desktop iframes.
-              constraints: const BoxConstraints(
-                maxWidth: kIsWeb ? 560 : double.infinity,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-                child: Column(
-                  children: [
-                    _TopBar(controller: _controller, onRestart: _restartRun),
-                    const SizedBox(height: 8),
-                    _ToolBar(
-                      controller: _controller,
-                      trailAxeMode: _trailAxeMode,
-                      onToggleTrailAxe: _controller.canUseTrailAxe
-                          ? () {
-                              setState(() {
-                                _trailAxeMode = !_trailAxeMode;
-                              });
-                            }
-                          : null,
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  // Keeps the portrait layout readable in landscape desktop iframes.
+                  constraints: const BoxConstraints(
+                    maxWidth: kIsWeb ? 560 : double.infinity,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                    child: Column(
+                      children: [
+                        _TopBar(
+                          controller: _controller,
+                          onRestart: _restartRun,
+                          onHelp: _openHowToPlay,
+                        ),
+                        const SizedBox(height: 8),
+                        _ToolBar(
+                          controller: _controller,
+                          trailAxeMode: _trailAxeMode,
+                          onToggleTrailAxe: _controller.canUseTrailAxe
+                              ? () {
+                                  setState(() {
+                                    _trailAxeMode = !_trailAxeMode;
+                                  });
+                                }
+                              : null,
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final boardSize = math.min(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              );
+                              return Center(
+                                child: SizedBox.square(
+                                  dimension: boardSize,
+                                  child: GridView.builder(
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: board.length,
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 4,
+                                          crossAxisSpacing: 8,
+                                          mainAxisSpacing: 8,
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      final tier = board[index];
+                                      return _CampTile(
+                                        tier: tier,
+                                        trailAxeMode: _trailAxeMode,
+                                        highlighted: _cursor == index,
+                                        onTap: () => _handleCellTap(
+                                          index,
+                                          fromPointer: true,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _controller.isGameOver
+                              ? 'Board jammed. Restart for another run.'
+                              : _cursor != null
+                              ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
+                              : _trailAxeMode
+                              ? 'Tap an occupied camp tile to clear a path.'
+                              : 'Connect 3 matching camp tiles to raise the camp.',
+                          style: const TextStyle(
+                            color: Color(0xFFD8E4D9),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (_controller.isGameOver) ...[
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: _breakAdInProgress ? null : _restartRun,
+                            child: const Text('Restart Run'),
+                          ),
+                        ],
+                        AdBanner(enabled: widget.enableAds),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final boardSize = math.min(
-                            constraints.maxWidth,
-                            constraints.maxHeight,
-                          );
-                          return Center(
-                            child: SizedBox.square(
-                              dimension: boardSize,
-                              child: GridView.builder(
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: board.length,
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 4,
-                                      crossAxisSpacing: 8,
-                                      mainAxisSpacing: 8,
-                                    ),
-                                itemBuilder: (context, index) {
-                                  final tier = board[index];
-                                  return _CampTile(
-                                    tier: tier,
-                                    trailAxeMode: _trailAxeMode,
-                                    highlighted: _cursor == index,
-                                    onTap: () => _handleCellTap(
-                                      index,
-                                      fromPointer: true,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _controller.isGameOver
-                          ? 'Board jammed. Restart for another run.'
-                          : _cursor != null
-                          ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
-                          : _trailAxeMode
-                          ? 'Tap an occupied camp tile to clear a path.'
-                          : 'Connect 3 matching camp tiles to raise the camp.',
-                      style: const TextStyle(
-                        color: Color(0xFFD8E4D9),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (_controller.isGameOver) ...[
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        onPressed: _breakAdInProgress ? null : _restartRun,
-                        child: const Text('Restart Run'),
-                      ),
-                    ],
-                    AdBanner(enabled: widget.enableAds),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+            if (_showHowTo)
+              Positioned.fill(
+                child: HowToPlayOverlay(
+                  steps: _howToPlaySteps,
+                  onClose: _closeHowToPlay,
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
 
+const List<HowToPlayStep> _howToPlaySteps = [
+  HowToPlayStep(
+    icon: Icons.grid_view,
+    text:
+        'Match 3 or more touching camp tiles to merge them into a higher '
+        'tier. Keep the 4x4 board from jamming.',
+  ),
+  HowToPlayStep(
+    icon: Icons.touch_app,
+    text:
+        'Tap an empty tile to place the next piece. Keyboard: arrows/WASD '
+        'move, Enter/Space place.',
+  ),
+  HowToPlayStep(
+    icon: Icons.hardware,
+    text:
+        'Stuck? The Trail Axe clears one tile (X on keyboard). You get one '
+        'now and more every 10 moves.',
+  ),
+];
+
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.controller, required this.onRestart});
+  const _TopBar({
+    required this.controller,
+    required this.onRestart,
+    required this.onHelp,
+  });
 
   final MergeCampController controller;
   final VoidCallback onRestart;
+  final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -362,14 +458,23 @@ class _TopBar extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              _MetricPill(label: 'Score', value: '${controller.score}'),
-              const SizedBox(width: 6),
-              _MetricPill(label: 'Moves', value: '${controller.placements}'),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _MetricPill(label: 'Score', value: '${controller.score}'),
+                const SizedBox(width: 6),
+                _MetricPill(label: 'Moves', value: '${controller.placements}'),
+              ],
+            ),
           ),
+        ),
+        IconButton(
+          onPressed: onHelp,
+          tooltip: 'How to play',
+          icon: const Icon(Icons.help_outline),
         ),
         IconButton(
           onPressed: onRestart,
