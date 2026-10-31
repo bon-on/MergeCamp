@@ -29,7 +29,7 @@ MergeCamp는 iPhone과 Android를 위한 모바일 머지 퍼즐 게임이다. �
 
 ## 소리
 
-효과음(`assets/audio/place.wav`, `merge.wav`, `warning.wav`)은 이 프로젝트를 위해 생성한 파일이며 서드파티 오디오를 사용하지 않는다. 새 효과음이 필요하면 `tool/generate_sounds.py` 같은 생성기로 추가한다. 헤더의 스피커 버튼으로 소리를 켜고 끌 수 있으며 선택은 `shared_preferences`의 `sound_muted_v1`에 저장된다. CrazyGames 플랫폼 음소거와 광고 재생 중 음소거는 사용자 설정과 함께 적용된다. iOS는 오디오 세션 `.ambient`를 사용해 무음 스위치를 따르고 다른 앱의 음악을 끊지 않는다.
+효과음(`assets/audio/place.wav`, `merge.wav`, `warning.wav`)은 이 프로젝트를 위해 생성한 파일이며 서드파티 오디오를 사용하지 않는다. 새 효과음이 필요하면 내려받지 말고 결정적 생성 스크립트로 추가한다. 헤더의 스피커 버튼으로 소리를 켜고 끌 수 있으며 선택은 `shared_preferences`의 `sound_muted_v1`에 저장된다. CrazyGames 플랫폼 음소거와 광고 재생 중 음소거는 사용자 설정과 함께 적용된다. iOS는 오디오 세션 `.ambient`를 사용해 무음 스위치를 따르고 다른 앱의 음악을 끊지 않는다.
 
 ## 폰트 라이선스
 

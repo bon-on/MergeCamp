@@ -9,6 +9,7 @@ import 'package:merge_camp/src/game/feedback_fx.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/platform/game_platform.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _SeenStore extends HowToPlayStore {
@@ -170,4 +171,59 @@ void main() {
     await tester.pump();
     expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget);
   });
+
+  testWidgets('platform mute silences sound even when the user is unmuted', (
+    tester,
+  ) async {
+    final calls = _recordChannel(tester);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = MergeCampController(random: Random(0));
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MergeCampScreen(
+          controller: controller,
+          howToPlayStore: _SeenStore(),
+          soundMuteStore: _FakeMuteStore(),
+          platform: const _MutedPlatform(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tapAt(const Offset(60, 400));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(controller.placements, 1);
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('toggle returns keyboard focus to the board', (tester) async {
+    _recordChannel(tester);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = MergeCampController(random: Random(0));
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MergeCampScreen(
+          controller: controller,
+          howToPlayStore: _SeenStore(),
+          soundMuteStore: _FakeMuteStore(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.volume_up_rounded));
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'MergeCampBoard');
+  });
+}
+
+class _MutedPlatform extends NoopGamePlatform {
+  const _MutedPlatform();
+
+  @override
+  bool get isAudioMuted => true;
 }
