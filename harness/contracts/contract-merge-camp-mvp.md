@@ -31,8 +31,8 @@ evidence_files:
 
 ## Verification
 - `flutter test`를 실행한다.
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md`를 실행한다.
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`를 실행한다.
+- `node <harness-lab>/dist/index.js audit . --format md`를 실행한다.
+- `node <harness-lab>/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`를 실행한다.
 
 ## Evidence References
 - reports/merge-camp-audit-report.md

@@ -41,7 +41,7 @@ MergeCamp를 기존 모바일 앱과 같은 코드베이스에서 Flutter web/PW
 ```sh
 flutter test
 flutter build web --release --base-href /MergeCamp/
-node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md
+node <harness-lab>/dist/index.js audit . --format md
 ```
 
 ## Evidence References

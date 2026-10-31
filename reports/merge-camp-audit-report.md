@@ -1,7 +1,7 @@
 # 하네스 감사 보고서
 
 - 저장소: MergeCamp
-- Manifest: `/Users/junsik.park/sources/games/MergeCamp/harness/manifest.json`
+- Manifest: `harness/manifest.json`
 - 정책 모드: `warn-block-critical`
 - 스택 요약: 효과음과 햅틱 피드백을 포함한 Flutter 모바일 퍼즐 게임 저장소
 - 감지된 프로필: 없음

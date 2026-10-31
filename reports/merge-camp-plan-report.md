@@ -1,7 +1,7 @@
 # 하네스 계획 보고서
 
 - 제목: MergeCamp 자연 세션 모바일 MVP 제공
-- 명세: `/Users/junsik.park/sources/games/MergeCamp/harness/specs/feature-merge-camp-mvp.md`
+- 명세: `harness/specs/feature-merge-camp-mvp.md`
 - 상태: active
 
 ## 실행 순서
@@ -44,8 +44,8 @@
 - `harness-audit`
 - `harness-plan`
 - `flutter test`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`
+- `node <harness-lab>/dist/index.js audit . --format md`
+- `node <harness-lab>/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`
 
 ## 차단 사항
 

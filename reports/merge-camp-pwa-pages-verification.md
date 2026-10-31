@@ -10,8 +10,8 @@ Verification for `feature-merge-camp-pwa-pages`.
 flutter test
 flutter build web --release --base-href /MergeCamp/
 flutter analyze
-node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md
-node /Users/junsik.park/sources/harness-lab/dist/index.js plan harness/specs/feature-merge-camp-pwa-pages.md --format text
+node <harness-lab>/dist/index.js audit . --format md
+node <harness-lab>/dist/index.js plan harness/specs/feature-merge-camp-pwa-pages.md --format text
 ```
 
 ## Results

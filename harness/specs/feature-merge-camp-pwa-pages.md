@@ -48,4 +48,4 @@ iPhone에 직접 설치한 개발 빌드는 서명 만료로 계속 실행되지
 
 - `flutter test`
 - `flutter build web --release --base-href /MergeCamp/`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md`
+- `node <harness-lab>/dist/index.js audit . --format md`

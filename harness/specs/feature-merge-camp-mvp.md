@@ -50,5 +50,5 @@ PocketOrbit는 플레이 지속성이 부족했다. 대체 게임은 더 느리�
 
 ## Evidence
 - `flutter test`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`
+- `node <harness-lab>/dist/index.js audit . --format md`
+- `node <harness-lab>/dist/index.js plan harness/specs/feature-merge-camp-mvp.md --format text`
