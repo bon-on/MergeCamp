@@ -190,16 +190,23 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
-    // The how-to-play card owns the keyboard while it is open.
-    if (_tutorialBlocking) return KeyEventResult.handled;
-    // Leave browser/OS shortcuts (Cmd/Ctrl+R etc.) alone.
-    if (HardwareKeyboard.instance.isControlPressed ||
+    final key = event.logicalKey;
+    // Leave Tab traversal and browser/OS shortcuts (Cmd/Ctrl+R, F5 etc.)
+    // alone, also while the how-to-play card is open.
+    if (key == LogicalKeyboardKey.tab ||
+        key == LogicalKeyboardKey.f5 ||
+        HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed ||
         HardwareKeyboard.instance.isAltPressed) {
       return KeyEventResult.ignored;
     }
-    final key = event.logicalKey;
+    // The how-to-play card owns the keyboard while it is open.
+    if (_tutorialBlocking) return KeyEventResult.handled;
+    // Held keys only repeat cursor moves: a key held on the card's "Play"
+    // button must not place a tile, swing the axe or restart once it closes.
+    final isRepeat = event is KeyRepeatEvent;
     if (key == LogicalKeyboardKey.keyR) {
+      if (isRepeat) return KeyEventResult.handled;
       unawaited(_restartRun());
       return KeyEventResult.handled;
     }
@@ -230,6 +237,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.space) {
+      if (isRepeat) return KeyEventResult.handled;
       if (_cursor == null) {
         setState(() => _cursor = 0);
       } else {
@@ -238,6 +246,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.keyX || key == LogicalKeyboardKey.keyE) {
+      if (isRepeat) return KeyEventResult.handled;
       if (_cursor == null) {
         setState(() => _cursor = 0);
       } else {
@@ -253,7 +262,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     bool forceAxe = false,
     bool fromPointer = false,
   }) async {
-    if (_breakAdInProgress || _handlingTap) return;
+    if (_breakAdInProgress || _handlingTap || _tutorialBlocking) return;
     if (fromPointer && _cursor != null) {
       setState(() => _cursor = null);
     }
@@ -396,6 +405,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                 ),
               ),
             ),
+            // Taps must not reach the board before the seen-flag read
+            // decides whether the how-to-play card opens.
+            if (_tutorialLoading)
+              const Positioned.fill(child: AbsorbPointer()),
             if (_showHowTo)
               Positioned.fill(
                 child: HowToPlayOverlay(

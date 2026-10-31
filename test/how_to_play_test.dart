@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -220,6 +221,53 @@ void main() {
     expect(platform.events, ['start', 'stop', 'start', 'stop', 'start']);
   });
 
+  testWidgets('holding Enter on Play does not place a tile after close', (
+    tester,
+  ) async {
+    final controller = await _pump(tester, _FakeStore());
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(_playBtn, findsOneWidget);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(_title, findsNothing);
+    for (var i = 0; i < 3; i++) {
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_filled(controller), 0);
+  });
+
+  testWidgets('board taps are ignored while the seen flag is loading', (
+    tester,
+  ) async {
+    final controller = await _pump(tester, _PendingStore());
+    expect(_title, findsNothing);
+    await tester.tap(find.byType(GridView), warnIfMissed: false);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_filled(controller), 0);
+  });
+
+  testWidgets('Tab and shortcuts stay unhandled while the card is open', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeStore());
+    // Tab reaches Flutter's focus traversal instead of being swallowed.
+    final before = FocusManager.instance.primaryFocus;
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus, isNot(before));
+    expect(await tester.sendKeyEvent(LogicalKeyboardKey.f5), isFalse);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    expect(await tester.sendKeyEvent(LogicalKeyboardKey.keyR), isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    expect(_title, findsOneWidget);
+  });
+
   for (final size in const [Size(390, 844), Size(844, 390), Size(1280, 720)]) {
     testWidgets('overlay fits without overflow at $size', (tester) async {
       await _pump(tester, _FakeStore(), size: size);
@@ -259,4 +307,16 @@ class _ThrowingStore extends HowToPlayStore {
 
   @override
   Future<void> markSeen() async => throw StateError('disk full');
+}
+
+class _PendingStore extends HowToPlayStore {
+  _PendingStore();
+
+  final Completer<bool> _never = Completer<bool>();
+
+  @override
+  Future<bool> loadSeen() => _never.future;
+
+  @override
+  Future<void> markSeen() async {}
 }
