@@ -65,24 +65,34 @@ class CrazyGamesPlatform extends GamePlatform {
       if (data == null || user == null) return;
       // A login or logout swaps the Data module to another player's data;
       // reload so stale in-memory values never overwrite it. The listener is
-      // registered before the initial user is known, so no switch is missed.
-      var knowsInitialUser = false;
+      // registered before the initial user is known so no switch is missed;
+      // early events are compared once the cloud store is active. Without an
+      // active cloud store there is nothing to protect, so no reload.
+      var cloudActive = false;
       String? initialName;
+      var sawEarlyEvent = false;
+      String? earlyName;
       user.addAuthListener(
         ((_User? changed) {
-          if (knowsInitialUser && changed?.username == initialName) return;
-          _reload();
+          final name = changed?.username;
+          if (!cloudActive) {
+            sawEarlyEvent = true;
+            earlyName = name;
+            return;
+          }
+          if (name != initialName) _reload();
         }).toJS,
       );
       final initial = await user.getUser().toDart.timeout(_initTimeout);
       initialName = initial?.username;
-      knowsInitialUser = true;
       SharedPreferencesStorePlatform.instance = await CloudPrefsStore.load(
         cloud: _JsCloudData(data),
         local: SharedPreferencesStorePlatform.instance,
         localStamp: _LocalStorageData(),
         owner: initialName,
       );
+      cloudActive = true;
+      if (sawEarlyEvent && earlyName != initialName) _reload();
     } catch (error) {
       debugPrint('CrazyGames data module unavailable: $error');
     }

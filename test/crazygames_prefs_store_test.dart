@@ -150,6 +150,85 @@ void main() {
     expect(await bob.getAll(), <String, Object>{'flutter.best': 2});
   });
 
+  group('a non-local start replaces the mirror before stamping it', () {
+    test('newer cloud copy stays newer after a write and reload', () async {
+      final cloud = _FakeData(<String, String>{
+        CloudPrefsStore.cloudKey: _envelope(20, 'ana', <String, Object>{
+          'flutter.camp_progress_v1': 'xp500',
+        }),
+      });
+      final stamp = _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(3, 'ana'),
+      });
+      final local = _local(<String, Object>{
+        'flutter.camp_progress_v1': 'xp10',
+      });
+      final first = await _load(
+        cloud: cloud,
+        localStore: local,
+        stamp: stamp,
+        owner: 'ana',
+      );
+      await first.setValue('Bool', 'flutter.sound_muted_v1', true);
+
+      final second = await _load(
+        cloud: cloud,
+        localStore: local,
+        stamp: stamp,
+        owner: 'ana',
+      );
+      expect(await second.getAll(), <String, Object>{
+        'flutter.camp_progress_v1': 'xp500',
+        'flutter.sound_muted_v1': true,
+      });
+      expect(await local.getAll(), await second.getAll());
+    });
+
+    test('a guest never inherits the previous player after a write', () async {
+      final cloud = _FakeData();
+      final stamp = _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(6, 'ana'),
+      });
+      final local = _local(<String, Object>{
+        'flutter.camp_progress_v1': 'ana-xp',
+      });
+      final first = await _load(cloud: cloud, localStore: local, stamp: stamp);
+      await first.setValue('Bool', 'flutter.sound_muted_v1', true);
+
+      final second = await _load(cloud: cloud, localStore: local, stamp: stamp);
+      expect(await second.getAll(), <String, Object>{
+        'flutter.sound_muted_v1': true,
+      });
+      expect(await local.getAll(), <String, Object>{
+        'flutter.sound_muted_v1': true,
+      });
+    });
+
+    test('every value type is rewritten into the mirror', () async {
+      final local = _local(<String, Object>{'flutter.old': 1});
+      await _load(
+        cloud: _FakeData(<String, String>{
+          CloudPrefsStore.cloudKey: _envelope(2, 'ana', <String, Object>{
+            'flutter.b': true,
+            'flutter.i': 3,
+            'flutter.d': 1.5,
+            'flutter.s': 'x',
+            'flutter.l': <String>['a'],
+          }),
+        }),
+        localStore: local,
+        owner: 'ana',
+      );
+      expect(await local.getAll(), <String, Object>{
+        'flutter.b': true,
+        'flutter.i': 3,
+        'flutter.d': 1.5,
+        'flutter.s': 'x',
+        'flutter.l': <String>['a'],
+      });
+    });
+  });
+
   test('unstamped local data loses to an existing cloud copy', () async {
     final store = await _load(
       cloud: _FakeData(<String, String>{

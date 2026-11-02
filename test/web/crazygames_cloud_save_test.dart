@@ -2,6 +2,7 @@
 @TestOn('browser')
 library;
 
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -17,6 +18,7 @@ class _FakeSdk {
     this.failData = false,
     this.username,
     this.userFails = false,
+    this.userResult,
   }) {
     final game = JSObject()
       ..setProperty('gameplayStart'.toJS, (() {}).toJS)
@@ -35,14 +37,14 @@ class _FakeSdk {
         ((JSString key, JSString value) => items[key.toDart] = value.toDart)
             .toJS,
       );
-    final user = JSObject()
+    final userModule = JSObject()
       ..setProperty(
         'getUser'.toJS,
         (() {
           if (userFails) {
             return Future<JSAny?>.error('network').toJS;
           }
-          return Future<JSAny?>.value(_user(username)).toJS;
+          return (userResult ?? Future<JSAny?>.value(user(username))).toJS;
         }).toJS,
       )
       ..setProperty(
@@ -54,7 +56,7 @@ class _FakeSdk {
       ..setProperty('game'.toJS, game)
       ..setProperty('ad'.toJS, JSObject())
       ..setProperty('data'.toJS, data)
-      ..setProperty('user'.toJS, user)
+      ..setProperty('user'.toJS, userModule)
       ..setProperty('init'.toJS, (() => Future<void>.value().toJS).toJS);
     globalContext.setProperty(
       'CrazyGames'.toJS,
@@ -66,14 +68,15 @@ class _FakeSdk {
   final bool failData;
   final String? username;
   final bool userFails;
+  final Future<JSAny?>? userResult;
   final Map<String, String> items = <String, String>{};
   JSFunction? authListener;
 
-  static JSObject? _user(String? name) => name == null
+  static JSObject? user(String? name) => name == null
       ? null
       : (JSObject()..setProperty('username'.toJS, name.toJS));
 
-  void auth(String? name) => authListener!.callAsFunction(null, _user(name));
+  void auth(String? name) => authListener!.callAsFunction(null, user(name));
 }
 
 void main() {
@@ -118,14 +121,41 @@ void main() {
     expect(SharedPreferencesStorePlatform.instance, same(original));
   });
 
-  test('unknown initial user keeps local and reloads on any auth', () async {
+  test('unknown initial user keeps local and never reloads', () async {
     final sdk = _FakeSdk(userFails: true);
     var reloads = 0;
     await (CrazyGamesPlatform()..reloadOverride = () => reloads++).initialize();
     expect(SharedPreferencesStorePlatform.instance, same(original));
-    sdk.auth(null);
-    expect(reloads, 1);
+    sdk.auth('bob');
+    expect(reloads, 0);
   });
+
+  test(
+    'auth events before the initial user is known are compared later',
+    () async {
+      final pending = Completer<JSAny?>();
+      final sdk = _FakeSdk(username: 'ana', userResult: pending.future);
+      var reloads = 0;
+      final init = (CrazyGamesPlatform()..reloadOverride = () => reloads++)
+          .initialize();
+      await Future<void>.delayed(Duration.zero);
+      sdk.auth('ana');
+      pending.complete(_FakeSdk.user('ana'));
+      await init;
+      expect(reloads, 0);
+
+      final pending2 = Completer<JSAny?>();
+      final sdk2 = _FakeSdk(username: 'ana', userResult: pending2.future);
+      SharedPreferencesStorePlatform.instance = original;
+      final init2 = (CrazyGamesPlatform()..reloadOverride = () => reloads++)
+          .initialize();
+      await Future<void>.delayed(Duration.zero);
+      sdk2.auth('bob');
+      pending2.complete(_FakeSdk.user('ana'));
+      await init2;
+      expect(reloads, 1);
+    },
+  );
 
   test('only a different player triggers a reload', () async {
     final sdk = _FakeSdk(username: 'ana');

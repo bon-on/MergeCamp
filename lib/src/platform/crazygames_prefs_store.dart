@@ -76,14 +76,36 @@ class CloudPrefsStore extends SharedPreferencesStorePlatform {
         (remote == null || (stamp?.revision ?? 0) >= remote.stamp.revision)) {
       values = localValues;
       revision = stamp?.revision ?? 0;
-    } else if (remote != null) {
-      values = remote.values;
-      revision = remote.stamp.revision;
     } else {
-      values = <String, Object>{};
-      revision = 0;
+      values = remote?.values ?? <String, Object>{};
+      revision = remote?.stamp.revision ?? 0;
+      // The mirror holds another snapshot: replace it before stamping it as
+      // this player's, or its leftover keys would win on the next load.
+      await _replaceMirror(local, values);
+      localStamp.setItem(
+        localStampKey,
+        jsonEncode(<String, Object?>{'rev': revision, 'owner': owner}),
+      );
     }
     return CloudPrefsStore._(cloud, local, localStamp, owner, revision, values);
+  }
+
+  static Future<void> _replaceMirror(
+    SharedPreferencesStorePlatform local,
+    Map<String, Object> values,
+  ) async {
+    await local.clear();
+    for (final entry in values.entries) {
+      final value = entry.value;
+      final type = switch (value) {
+        bool() => 'Bool',
+        int() => 'Int',
+        double() => 'Double',
+        String() => 'String',
+        _ => 'StringList',
+      };
+      await local.setValue(type, entry.key, value);
+    }
   }
 
   /// Decodes a cloud snapshot; null when missing or malformed. A bare map
