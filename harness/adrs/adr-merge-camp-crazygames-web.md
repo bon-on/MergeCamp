@@ -6,6 +6,7 @@ related_specs:
   - feature-merge-camp-gamepix
   - feature-merge-camp-crazygames
   - feature-sound-effects
+  - feature-retention-polish
 ---
 
 # ADR: CrazyGames 배포에 빌드 플래그와 플랫폼 어댑터 사용

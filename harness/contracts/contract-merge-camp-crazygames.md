@@ -6,6 +6,7 @@ related_specs:
   - feature-merge-camp-gamepix
   - feature-merge-camp-crazygames
   - feature-sound-effects
+  - feature-retention-polish
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md
