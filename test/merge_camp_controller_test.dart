@@ -126,4 +126,123 @@ void main() {
     }
     expect(counts[5], greaterThan(0));
   });
+
+  group('presentation helpers', () {
+    test('single merge records one step', () {
+      final controller = MergeCampController(
+        random: Random(0),
+        scriptedTiers: [1, 1, 1],
+      );
+      controller.place(0);
+      expect(controller.lastMergeSteps, isEmpty);
+      controller.place(1);
+      controller.place(4);
+
+      expect(controller.lastPlacedIndex, 4);
+      final steps = controller.lastMergeSteps;
+      expect(steps.length, 1);
+      expect(steps.single.origin, 4);
+      expect(steps.single.absorbed.toSet(), {0, 1});
+      expect(steps.single.fromTier, 1);
+      expect(steps.single.toTier, 2);
+      expect(steps.single.chainIndex, 1);
+      expect(steps.single.points, controller.score);
+      expect(controller.mergeCount, 1);
+      expect(controller.occupiedCount, 1);
+    });
+
+    test('chained merges record ordered steps and reset next placement', () {
+      final controller = MergeCampController(
+        random: Random(0),
+        scriptedTiers: [1],
+      );
+      // Placing tier 1 at 2 merges 0,1,2 into tier 2 at 2, which joins 6,10.
+      controller.debugLoadBoard([
+        1,
+        1,
+        null,
+        null,
+        null,
+        null,
+        2,
+        null,
+        null,
+        null,
+        2,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ], nextTier: 1);
+      controller.place(2);
+      final steps = controller.lastMergeSteps;
+      expect(steps.map((s) => s.chainIndex), [1, 2]);
+      expect(steps[1].fromTier, 2);
+      expect(steps[1].toTier, 3);
+      expect(steps[1].absorbed.toSet(), {6, 10});
+      expect(steps.fold<int>(0, (a, s) => a + s.points), controller.score);
+      expect(controller.mergeCount, 2);
+
+      controller.place(15);
+      expect(controller.lastMergeSteps, isEmpty);
+      expect(controller.lastPlacedIndex, 15);
+      controller.restart();
+      expect(controller.lastMergeSteps, isEmpty);
+      expect(controller.lastPlacedIndex, isNull);
+      expect(controller.mergeCount, 0);
+    });
+
+    test('grantTrailAxe respects cap and game over', () {
+      final controller = MergeCampController(random: Random(0));
+      var notified = 0;
+      controller.addListener(() => notified++);
+      expect(controller.trailAxes, 1);
+      expect(controller.grantTrailAxe(), isTrue);
+      expect(controller.trailAxes, MergeCampController.maxTrailAxes);
+      expect(controller.grantTrailAxe(), isFalse);
+      expect(notified, 1);
+
+      controller.debugLoadBoard(
+        List<int?>.filled(16, 1),
+        nextTier: 1,
+        trailAxes: 0,
+        isGameOver: true,
+      );
+      expect(controller.grantTrailAxe(), isFalse);
+      expect(controller.trailAxes, 0);
+    });
+
+    test('granted axe on a full board keeps the run alive', () {
+      final controller = MergeCampController(random: Random(0));
+      // Checkerboard of 1/2 with one hole: no merge possible.
+      final board = <int?>[
+        for (var i = 0; i < 16; i++) ((i ~/ 4 + i % 4).isEven ? 1 : 2),
+      ];
+      board[0] = null;
+      controller.debugLoadBoard(board, nextTier: 3, trailAxes: 0);
+      expect(controller.grantTrailAxe(), isTrue);
+      expect(controller.place(0).action, MergeAction.placed);
+      expect(controller.isGameOver, isFalse);
+      expect(controller.occupiedCount, 16);
+    });
+
+    test('addBonusScore adds and notifies', () {
+      final controller = MergeCampController(random: Random(0));
+      var notified = 0;
+      controller.addListener(() => notified++);
+      controller.addBonusScore(150);
+      expect(controller.score, 150);
+      expect(notified, 1);
+      controller.addBonusScore(0);
+      expect(controller.score, 150);
+    });
+
+    test('camp tier names cover eight tiers and clamp', () {
+      expect(MergeCampController.maxCampTier, 8);
+      expect(MergeCampController.campTierName(8), 'Star Observatory');
+      expect(MergeCampController.campTierName(9), 'Star Observatory');
+      expect(MergeCampController.campTierName(0), 'Trail Tent');
+    });
+  });
 }

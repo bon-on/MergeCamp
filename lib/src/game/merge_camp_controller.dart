@@ -10,6 +10,30 @@ class MergeResult {
   final MergeAction action;
 }
 
+/// One merge inside a placement, for presentation (absorb animation, popups).
+class MergeStep {
+  const MergeStep({
+    required this.origin,
+    required this.absorbed,
+    required this.fromTier,
+    required this.toTier,
+    required this.points,
+    required this.chainIndex,
+  });
+
+  /// Cell that received the upgraded tile.
+  final int origin;
+
+  /// Cells that were cleared into [origin] (excludes [origin]).
+  final List<int> absorbed;
+  final int fromTier;
+  final int toTier;
+  final int points;
+
+  /// 1-based position of this merge in the chain started by one placement.
+  final int chainIndex;
+}
+
 class MergeCampController extends ChangeNotifier {
   MergeCampController({Random? random, List<int>? scriptedTiers})
     : _random = random ?? Random(),
@@ -24,6 +48,9 @@ class MergeCampController extends ChangeNotifier {
   static const int cellCount = boardWidth * boardWidth;
   static const int previewCount = 3;
   static const int maxTrailAxes = 2;
+
+  /// Highest camp tier with its own name and illustration.
+  static const int maxCampTier = 8;
 
   /// Relative spawn weight per tier, lowest first. Lower tiers come up more
   /// often so runs lean on building up rather than on direct high-tier drops.
@@ -43,6 +70,19 @@ class MergeCampController extends ChangeNotifier {
   int _lastMergeChain = 0;
   int _bestMergeChain = 0;
   bool _isGameOver = false;
+  int _mergeCount = 0;
+  int? _lastPlacedIndex;
+  List<MergeStep> _lastMergeSteps = const <MergeStep>[];
+
+  /// Merge steps of the most recent [place]; empty otherwise.
+  List<MergeStep> get lastMergeSteps => _lastMergeSteps;
+
+  /// Cell of the most recent successful [place], or null.
+  int? get lastPlacedIndex => _lastPlacedIndex;
+  int get occupiedCount => _board.where((cell) => cell != null).length;
+
+  /// Total merge steps in this run.
+  int get mergeCount => _mergeCount;
 
   List<int?> get board => List.unmodifiable(_board);
   int get score => _score;
@@ -76,6 +116,9 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = false;
+    _mergeCount = 0;
+    _lastPlacedIndex = null;
+    _lastMergeSteps = const <MergeStep>[];
     _previewTiers
       ..clear()
       ..addAll(List<int>.generate(previewCount, (_) => _rollNextTier()));
@@ -91,11 +134,16 @@ class MergeCampController extends ChangeNotifier {
     }
 
     _lastMergeChain = 0;
+    _lastMergeSteps = const <MergeStep>[];
+    _lastPlacedIndex = index;
     final placedTier = _previewTiers.removeAt(0);
     _board[index] = placedTier;
     _placements += 1;
     _highestTier = max(_highestTier, placedTier);
-    final mergeCount = _resolveMerges(index);
+    final steps = <MergeStep>[];
+    final mergeCount = _resolveMerges(index, steps);
+    _lastMergeSteps = List.unmodifiable(steps);
+    _mergeCount += mergeCount;
     _lastMergeChain = mergeCount;
     _bestMergeChain = max(_bestMergeChain, mergeCount);
     _awardTrailAxeIfReady();
@@ -111,6 +159,23 @@ class MergeCampController extends ChangeNotifier {
           ? MergeAction.merged
           : MergeAction.placed,
     );
+  }
+
+  /// Grants one Trail Axe (mission reward). Returns false at the cap or after
+  /// game over. Game over is only decided in [place], so a granted axe on a
+  /// full board keeps the run going.
+  bool grantTrailAxe() {
+    if (_isGameOver || _trailAxes >= maxTrailAxes) return false;
+    _trailAxes += 1;
+    notifyListeners();
+    return true;
+  }
+
+  /// Adds bonus points (mission reward) without touching any rule.
+  void addBonusScore(int points) {
+    if (points <= 0) return;
+    _score += points;
+    notifyListeners();
   }
 
   MergeResult useTrailAxe(int index) {
@@ -131,7 +196,7 @@ class MergeCampController extends ChangeNotifier {
     return const MergeResult(MergeAction.removed);
   }
 
-  int _resolveMerges(int origin) {
+  int _resolveMerges(int origin, List<MergeStep> steps) {
     var mergeCount = 0;
     var current = origin;
 
@@ -155,7 +220,18 @@ class MergeCampController extends ChangeNotifier {
       final upgraded = tier + 1;
       _board[current] = upgraded;
       _highestTier = max(_highestTier, upgraded);
-      _score += cluster.length * 12 * upgraded * mergeCount;
+      final points = cluster.length * 12 * upgraded * mergeCount;
+      _score += points;
+      steps.add(
+        MergeStep(
+          origin: current,
+          absorbed: List.unmodifiable(cluster.where((i) => i != current)),
+          fromTier: tier,
+          toTier: upgraded,
+          points: points,
+          chainIndex: mergeCount,
+        ),
+      );
     }
 
     return mergeCount;
@@ -213,6 +289,9 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = isGameOver;
+    _mergeCount = 0;
+    _lastPlacedIndex = null;
+    _lastMergeSteps = const <MergeStep>[];
   }
 
   void _awardTrailAxeIfReady() {
@@ -255,6 +334,7 @@ class MergeCampController extends ChangeNotifier {
       'Signal Tower',
       'Base Lodge',
       'Summit Camp',
+      'Star Observatory',
     ];
     return names[(tier - 1).clamp(0, names.length - 1)];
   }
