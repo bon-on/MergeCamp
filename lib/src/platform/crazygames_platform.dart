@@ -19,6 +19,10 @@ class CrazyGamesPlatform extends GamePlatform {
   static const Duration _adTimeout = Duration(seconds: 120);
 
   _Sdk? _sdk;
+
+  /// Replaces the page reload done on a login/logout (tests only).
+  @visibleForTesting
+  void Function()? reloadOverride;
   bool _adPlaying = false;
   bool _settingsMuted = false;
   void Function()? _muteListener;
@@ -54,31 +58,45 @@ class CrazyGamesPlatform extends GamePlatform {
   /// Routes shared_preferences through the SDK Data module so logged-in
   /// players keep progress across devices. Any failure keeps localStorage.
   Future<void> _useCloudSave(_Sdk sdk) async {
+    if (SharedPreferencesStorePlatform.instance is CloudPrefsStore) return;
     try {
       final data = sdk.data;
-      if (data == null) return;
-      final store = await CloudPrefsStore.load(
-        _JsCloudData(data),
-        SharedPreferencesStorePlatform.instance,
-      );
-      SharedPreferencesStorePlatform.instance = store;
-      // A mid-session login swaps the Data module to the account's data;
-      // reload so stale in-memory values never overwrite it.
       final user = sdk.user;
-      if (user == null) return;
-      final initial = await user.getUser().toDart.timeout(_initTimeout);
-      final initialName = initial?.username;
+      if (data == null || user == null) return;
+      // A login or logout swaps the Data module to another player's data;
+      // reload so stale in-memory values never overwrite it. The listener is
+      // registered before the initial user is known, so no switch is missed.
+      var knowsInitialUser = false;
+      String? initialName;
       user.addAuthListener(
         ((_User? changed) {
-          if (changed?.username == initialName) return;
-          globalContext
-              .getProperty<JSObject>('location'.toJS)
-              .callMethod<JSAny?>('reload'.toJS);
+          if (knowsInitialUser && changed?.username == initialName) return;
+          _reload();
         }).toJS,
+      );
+      final initial = await user.getUser().toDart.timeout(_initTimeout);
+      initialName = initial?.username;
+      knowsInitialUser = true;
+      SharedPreferencesStorePlatform.instance = await CloudPrefsStore.load(
+        cloud: _JsCloudData(data),
+        local: SharedPreferencesStorePlatform.instance,
+        localStamp: _LocalStorageData(),
+        owner: initialName,
       );
     } catch (error) {
       debugPrint('CrazyGames data module unavailable: $error');
     }
+  }
+
+  void _reload() {
+    final reload = reloadOverride;
+    if (reload != null) {
+      reload();
+      return;
+    }
+    globalContext
+        .getProperty<JSObject>('location'.toJS)
+        .callMethod<JSAny?>('reload'.toJS);
   }
 
   @override
@@ -195,6 +213,19 @@ extension type _UserModule._(JSObject _) implements JSObject {
 
 extension type _User._(JSObject _) implements JSObject {
   external String? get username;
+}
+
+class _LocalStorageData implements CloudData {
+  JSObject get _storage =>
+      globalContext.getProperty<JSObject>('localStorage'.toJS);
+
+  @override
+  String? getItem(String key) =>
+      _storage.callMethod<JSString?>('getItem'.toJS, key.toJS)?.toDart;
+
+  @override
+  void setItem(String key, String value) =>
+      _storage.callMethod<JSAny?>('setItem'.toJS, key.toJS, value.toJS);
 }
 
 class _JsCloudData implements CloudData {

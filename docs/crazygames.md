@@ -59,5 +59,15 @@ cd build && python3 -m http.server 8765
 ## 알려진 제한
 
 - 키보드 조작은 없다. 클릭/탭만으로 전체 플레이가 가능하다.
-- 보상형 광고, 배너, Data/User 모듈은 아직 쓰지 않는다.
+- 보상형 광고와 배너는 아직 쓰지 않는다.
+- 진행도는 SDK Data 모듈에 저장한다(`feature-crazygames-cloud-save`). 업로드할 때 제출 화면의 **Progress Save**에서
+  "Yes, using the Data Module from the CrazyGames SDK"를 반드시 선택한다. 선택하지 않으면 Data 모듈이 꺼져 있어
+  브라우저 localStorage에만 저장된다.
+  - 모든 환경설정을 Data 모듈 키 `prefs_v1` 하나에 `{rev, owner, values}`로 저장하고, 같은 값을 localStorage에도 쓴다.
+    localStorage의 `cg_prefs_stamp_v1`가 로컬 사본의 주인(사용자 이름, 게스트는 null)과 리비전을 기록한다.
+  - 시작할 때 로컬 사본이 같은 사용자 것이고 리비전이 같거나 더 높으면 로컬을, 아니면 계정 사본을 쓴다. 다른 사용자의 로컬
+    사본은 쓰지 않는다. 이 기능 이전의 로컬 진행도는 계정 사본이 없을 때만 이어받는다(이미 다른 기기에서 계정 사본이
+    생겼다면 계정 사본이 이긴다).
+  - 로그인/로그아웃(`user.addAuthListener`)으로 사용자가 바뀌면 페이지를 다시 읽는다. 처음 사용자를 알 수 없으면 계정 저장을
+    켜지 않는다.
 - Roboto는 `assets/fonts/`에 번들되어 있어 런타임에 Google 폰트 CDN 요청이 없다.

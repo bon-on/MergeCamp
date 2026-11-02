@@ -4,12 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/platform/crazygames_prefs_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/types.dart';
 
-class _FakeCloud implements CloudData {
-  _FakeCloud([this.items = const <String, String>{}]);
+class _FakeData implements CloudData {
+  _FakeData([Map<String, String>? items]) : items = items ?? <String, String>{};
 
-  Map<String, String> items;
+  final Map<String, String> items;
   bool failReads = false;
+  bool failWrites = false;
 
   @override
   String? getItem(String key) {
@@ -19,50 +21,82 @@ class _FakeCloud implements CloudData {
 
   @override
   void setItem(String key, String value) {
-    items = <String, String>{...items, key: value};
+    if (failWrites) throw StateError('dataLimitExceeded');
+    items[key] = value;
   }
 
-  Map<String, dynamic> get snapshot =>
+  Map<String, dynamic> get envelope =>
       jsonDecode(items[CloudPrefsStore.cloudKey]!) as Map<String, dynamic>;
+
+  Map<String, dynamic> get stamp =>
+      jsonDecode(items[CloudPrefsStore.localStampKey]!) as Map<String, dynamic>;
 }
+
+String _envelope(int rev, String? owner, Map<String, Object> values) =>
+    jsonEncode(<String, Object?>{'rev': rev, 'owner': owner, 'values': values});
+
+String _stamp(int rev, String? owner) =>
+    jsonEncode(<String, Object?>{'rev': rev, 'owner': owner});
 
 InMemorySharedPreferencesStore _local(Map<String, Object> values) =>
     InMemorySharedPreferencesStore.withData(values);
 
+Future<CloudPrefsStore> _load({
+  required _FakeData cloud,
+  Map<String, Object> local = const <String, Object>{},
+  _FakeData? stamp,
+  String? owner,
+  InMemorySharedPreferencesStore? localStore,
+}) => CloudPrefsStore.load(
+  cloud: cloud,
+  local: localStore ?? _local(local),
+  localStamp: stamp ?? _FakeData(),
+  owner: owner,
+);
+
 void main() {
   setUp(SharedPreferences.resetStatic);
 
-  test('first run starts from local values and uploads on write', () async {
-    final cloud = _FakeCloud();
+  test('first run starts from unstamped local values and uploads', () async {
+    final cloud = _FakeData();
+    final stamp = _FakeData();
     final local = _local(<String, Object>{'flutter.best': 120});
-    SharedPreferencesStorePlatform.instance = await CloudPrefsStore.load(
-      cloud,
-      local,
+    SharedPreferencesStorePlatform.instance = await _load(
+      cloud: cloud,
+      localStore: local,
+      stamp: stamp,
+      owner: 'ana',
     );
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getInt('best'), 120);
 
     await prefs.setBool('muted', true);
-    expect(cloud.snapshot, <String, dynamic>{
-      'flutter.best': 120,
-      'flutter.muted': true,
+    expect(cloud.envelope, <String, dynamic>{
+      'rev': 1,
+      'owner': 'ana',
+      'values': <String, dynamic>{'flutter.best': 120, 'flutter.muted': true},
     });
+    expect(stamp.stamp, <String, dynamic>{'rev': 1, 'owner': 'ana'});
     expect((await local.getAll())['flutter.muted'], isTrue);
   });
 
-  test('cloud snapshot wins over local values', () async {
-    final cloud = _FakeCloud(<String, String>{
-      CloudPrefsStore.cloudKey: jsonEncode(<String, Object>{
+  test('newer cloud snapshot wins and every value type survives', () async {
+    final cloud = _FakeData(<String, String>{
+      CloudPrefsStore.cloudKey: _envelope(5, 'ana', <String, Object>{
         'flutter.best': 900,
         'flutter.progress': '{"xp":40}',
         'flutter.list': <String>['a', 'b'],
         'flutter.ratio': 1.5,
       }),
     });
-    SharedPreferencesStorePlatform.instance = await CloudPrefsStore.load(
-      cloud,
-      _local(<String, Object>{'flutter.best': 5, 'flutter.other': 'x'}),
+    SharedPreferencesStorePlatform.instance = await _load(
+      cloud: cloud,
+      local: <String, Object>{'flutter.best': 5, 'flutter.other': 'x'},
+      stamp: _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(3, 'ana'),
+      }),
+      owner: 'ana',
     );
 
     final prefs = await SharedPreferences.getInstance();
@@ -73,45 +107,140 @@ void main() {
     expect(prefs.getString('other'), isNull);
   });
 
-  test('remove and clear reach the cloud snapshot', () async {
-    final cloud = _FakeCloud();
-    SharedPreferencesStorePlatform.instance = await CloudPrefsStore.load(
-      cloud,
-      _local(<String, Object>{'flutter.a': 1, 'flutter.b': 2}),
+  test('a newer local mirror of the same player beats a stale cloud', () async {
+    final store = await _load(
+      cloud: _FakeData(<String, String>{
+        CloudPrefsStore.cloudKey: _envelope(4, 'ana', <String, Object>{
+          'flutter.best': 10,
+        }),
+      }),
+      local: <String, Object>{'flutter.best': 30},
+      stamp: _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(6, 'ana'),
+      }),
+      owner: 'ana',
     );
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.remove('a');
-    expect(cloud.snapshot.keys, <String>['flutter.b']);
-    await prefs.clear();
-    expect(cloud.snapshot, isEmpty);
+    expect(await store.getAll(), <String, Object>{'flutter.best': 30});
   });
 
-  test('corrupt snapshots are ignored', () {
-    expect(CloudPrefsStore.decode(null), isNull);
-    expect(CloudPrefsStore.decode('not json'), isNull);
-    expect(CloudPrefsStore.decode('[1,2]'), isNull);
-    expect(CloudPrefsStore.decode('{"flutter.a":{"x":1},"flutter.b":2}'), {
-      'flutter.b': 2,
-    });
+  test('another player\'s local mirror is never used', () async {
+    // Logged out after playing as ana: the guest starts fresh.
+    final guest = await _load(
+      cloud: _FakeData(),
+      local: <String, Object>{'flutter.best': 30},
+      stamp: _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(6, 'ana'),
+      }),
+    );
+    expect(await guest.getAll(), isEmpty);
+
+    // Bob logs in on ana's browser: bob's cloud copy wins.
+    final bob = await _load(
+      cloud: _FakeData(<String, String>{
+        CloudPrefsStore.cloudKey: _envelope(1, 'bob', <String, Object>{
+          'flutter.best': 2,
+        }),
+      }),
+      local: <String, Object>{'flutter.best': 30},
+      stamp: _FakeData(<String, String>{
+        CloudPrefsStore.localStampKey: _stamp(9, 'ana'),
+      }),
+      owner: 'bob',
+    );
+    expect(await bob.getAll(), <String, Object>{'flutter.best': 2});
   });
 
-  test('corrupt cloud value falls back to local values', () async {
-    final cloud = _FakeCloud(<String, String>{
-      CloudPrefsStore.cloudKey: '{broken',
-    });
-    final store = await CloudPrefsStore.load(
-      cloud,
-      _local(<String, Object>{'flutter.best': 7}),
+  test('unstamped local data loses to an existing cloud copy', () async {
+    final store = await _load(
+      cloud: _FakeData(<String, String>{
+        CloudPrefsStore.cloudKey: _envelope(1, 'ana', <String, Object>{
+          'flutter.best': 7,
+        }),
+      }),
+      local: <String, Object>{'flutter.best': 99},
+      owner: 'ana',
     );
     expect(await store.getAll(), <String, Object>{'flutter.best': 7});
   });
 
-  test('a failing data module surfaces so the caller keeps local', () async {
-    final cloud = _FakeCloud()..failReads = true;
-    expect(
-      () => CloudPrefsStore.load(cloud, _local(<String, Object>{})),
-      throwsStateError,
+  test('remove, clear and filtered calls reach the cloud snapshot', () async {
+    final cloud = _FakeData();
+    final store = await _load(
+      cloud: cloud,
+      local: <String, Object>{'flutter.a': 1, 'flutter.b': 2, 'flutter.c': 3},
     );
+    SharedPreferencesStorePlatform.instance = store;
+
+    expect(
+      await store.getAllWithParameters(
+        GetAllParameters(
+          filter: PreferencesFilter(
+            prefix: 'flutter.',
+            allowList: <String>{'flutter.a', 'flutter.c'},
+          ),
+        ),
+      ),
+      <String, Object>{'flutter.a': 1, 'flutter.c': 3},
+    );
+    await store.clearWithParameters(
+      ClearParameters(
+        filter: PreferencesFilter(
+          prefix: 'flutter.',
+          allowList: <String>{'flutter.c'},
+        ),
+      ),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('a');
+    expect((cloud.envelope['values'] as Map).keys, <String>['flutter.b']);
+    await prefs.clear();
+    expect(cloud.envelope['values'], isEmpty);
+  });
+
+  test('stored lists are copied, not shared with the caller', () async {
+    final cloud = _FakeData();
+    final store = await _load(cloud: cloud);
+    final list = <String>['a'];
+    await store.setValue('StringList', 'flutter.l', list);
+    list.add('b');
+    expect((await store.getAll())['flutter.l'], <String>['a']);
+  });
+
+  test('a failing cloud write still saves locally', () async {
+    final cloud = _FakeData()..failWrites = true;
+    final local = _local(<String, Object>{});
+    final store = await _load(cloud: cloud, localStore: local);
+    expect(await store.setValue('Int', 'flutter.best', 3), isTrue);
+    expect(await local.getAll(), <String, Object>{'flutter.best': 3});
+  });
+
+  test('corrupt snapshots and stamps are ignored', () async {
+    expect(CloudPrefsStore.decodeEnvelope(null), isNull);
+    expect(CloudPrefsStore.decodeEnvelope('not json'), isNull);
+    expect(CloudPrefsStore.decodeEnvelope('[1,2]'), isNull);
+    expect(
+      CloudPrefsStore.decodeValues(<String, Object>{
+        'flutter.a': <String, int>{'x': 1},
+        'flutter.b': 2,
+      }),
+      <String, Object>{'flutter.b': 2},
+    );
+    expect(CloudPrefsStore.decodeStamp('{"rev":"x"}'), isNull);
+
+    final store = await _load(
+      cloud: _FakeData(<String, String>{CloudPrefsStore.cloudKey: '{broken'}),
+      local: <String, Object>{'flutter.best': 7},
+    );
+    expect(await store.getAll(), <String, Object>{'flutter.best': 7});
+  });
+
+  test('a bare map from the first format reads as revision 0', () {
+    final decoded = CloudPrefsStore.decodeEnvelope('{"flutter.best":4}')!;
+    expect(decoded.stamp.revision, 0);
+    expect(decoded.values, <String, Object>{'flutter.best': 4});
+  });
+
+  test('a failing data module surfaces so the caller keeps local', () {
+    expect(() => _load(cloud: _FakeData()..failReads = true), throwsStateError);
   });
 }

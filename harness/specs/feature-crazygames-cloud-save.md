@@ -26,15 +26,21 @@ CrazyGames에 로그인한 플레이어도 기기나 브라우저를 바꾸면 �
   Data 모듈 기반 저장소로 바꾼다. 게임 코드의 저장소 클래스는 그대로 `SharedPreferences`를 쓴다.
 - 모든 환경설정 값은 Data 모듈의 키 하나(`prefs_v1`, JSON 객체)에 저장한다. 같은 값을 기존 localStorage에도 계속 써서
   Data 모듈이 꺼져도 로컬 진행도가 남는다.
-- 처음 실행할 때 `prefs_v1`이 없으면 기존 localStorage 값(이전 버전 플레이어의 진행도)으로 시작하고, 첫 쓰기 때 계정으로 올린다.
-- 판 도중 로그인하면(`user.addAuthListener`) 계정 데이터가 바뀌므로 페이지를 다시 읽어 오래된 메모리 값이 계정 데이터를
-  덮어쓰지 않게 한다.
+- 스냅샷은 `{rev, owner, values}`다. 매 쓰기마다 `rev`가 오르고, localStorage `cg_prefs_stamp_v1`에 로컬 사본의
+  `rev`와 `owner`(사용자 이름, 게스트 null)를 남긴다.
+- 시작 값 선택: 로컬 사본이 현재 사용자 것이고 `rev`가 계정 사본 이상이면 로컬(SDK 디바운스로 못 올라간 저장 보호),
+  아니면 계정 사본, 둘 다 아니면 빈 값. 다른 사용자의 로컬 사본은 쓰지 않는다. 표식 없는 이전 버전 로컬 진행도는 계정 사본이
+  없을 때만 이어받는다(이미 다른 기기에서 계정 사본을 만든 경우 그 기기의 이전 로컬 진행도는 이어받지 않는다는 절충).
+- 로그인/로그아웃(`user.addAuthListener`)으로 사용자가 바뀌면 페이지를 다시 읽어 오래된 메모리 값이 다른 사용자의 데이터를
+  덮어쓰지 않게 한다. 리스너는 처음 사용자를 확인하기 전에 등록하고, 처음 사용자를 알 수 없으면 계정 저장을 켜지 않는다.
 - Data 모듈 호출이 실패하거나(`dataModuleDisabled` 등) SDK가 없으면 기존 localStorage 저장을 그대로 쓴다.
 - 모바일, GitHub Pages, GamePix 빌드는 바뀌지 않는다.
 
 ## Acceptance Criteria
 - CrazyGames 빌드에서 저장한 값이 Data 모듈 `prefs_v1`과 localStorage 양쪽에 기록된다.
-- `prefs_v1`이 있으면 그 값이 localStorage 값보다 우선한다. 없으면 localStorage 값을 읽는다.
+- 같은 사용자의 더 새로운 로컬 사본은 계정 사본보다 우선하고, 그 외에는 계정 사본이 우선한다. 다른 사용자의 로컬 사본은
+  쓰이지 않는다. 계정 사본이 없고 로컬 표식도 없으면 기존 localStorage 값을 읽는다.
+- 같은 사용자의 인증 이벤트는 다시 읽기를 일으키지 않고, 다른 사용자나 로그아웃은 다시 읽는다.
 - 손상된 `prefs_v1`(JSON 아님, 객체 아님)은 무시하고 localStorage 값으로 대체한다.
 - Data 모듈 `getItem`이 예외를 던지면 저장소를 바꾸지 않는다.
 - SDK가 없거나 환경이 `crazygames`/`local`이 아니면 저장소를 바꾸지 않는다.

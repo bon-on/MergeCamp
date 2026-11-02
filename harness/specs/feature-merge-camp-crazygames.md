@@ -37,7 +37,7 @@ MergeCamp 웹 빌드는 GitHub Pages에서 광고 없이만 실행된다. CrazyG
 
 제외 범위:
 
-- 보상형 광고, 배너 광고, CrazyGames Data/User 모듈.
+- 보상형 광고, 배너 광고. (Data/User 모듈은 이후 `feature-crazygames-cloud-save`에서 진행도 저장 용도로만 도입했다.)
 - 키보드 조작(클릭 기반 게임이라 마우스로 전체 플레이가 가능하다).
 - 머지 규칙, 난이도, 점수 변경.
 - CrazyGames 개발자 포털 업로드와 제출.

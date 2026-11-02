@@ -7,6 +7,7 @@ related_specs:
   - feature-merge-camp-crazygames
   - feature-sound-effects
   - feature-retention-polish
+  - feature-crazygames-cloud-save
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md
@@ -27,7 +28,7 @@ evidence_files:
 
 명시적으로 제외한다.
 
-- 보상형/배너 광고, Data/User 모듈, 키보드 조작.
+- 보상형/배너 광고, 키보드 조작. (Data/User 모듈은 진행도 저장 용도로 `feature-crazygames-cloud-save`가 다룬다.)
 - 게임 규칙, 난이도, 점수 변경.
 - 포털 업로드와 제출.
 
