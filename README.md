@@ -29,7 +29,20 @@ MergeCamp는 iPhone과 Android를 위한 모바일 머지 퍼즐 게임이다. �
 
 ## 소리
 
-효과음(`assets/audio/place.wav`, `merge.wav`, `warning.wav`)은 이 프로젝트를 위해 생성한 파일이며 서드파티 오디오를 사용하지 않는다. 새 효과음이 필요하면 내려받지 말고 결정적 생성 스크립트로 추가한다. 헤더의 스피커 버튼으로 소리를 켜고 끌 수 있으며 선택은 `shared_preferences`의 `sound_muted_v1`에 저장된다. CrazyGames 플랫폼 음소거와 광고 재생 중 음소거는 사용자 설정과 함께 적용된다. iOS는 오디오 세션 `.ambient`를 사용해 무음 스위치를 따르고 다른 앱의 음악을 끊지 않는다.
+모든 소리는 이 프로젝트를 위해 생성한 파일이며 서드파티 오디오를 사용하지 않는다.
+
+| 파일 | 용도 |
+| --- | --- |
+| `place.wav`, `merge.wav`, `warning.wav` | 타일 배치, 머지, 보드 위험 (기존) |
+| `chain.wav` | 연쇄 머지 (밝게 올라가는 3음) |
+| `discover.wav` | 새 캠프 단계 발견 |
+| `mission.wav` | 미션 달성 |
+| `level_up.wav` | 캠프 레벨 업 |
+| `music_loop.wav` | 배경음악 루프 (C 장조, 100 BPM, 28.8초, 16 kHz 모노) |
+
+`tool/generate_sounds.py`(Python 3 표준 라이브러리만, 결정적 출력)가 `chain`, `discover`, `mission`, `level_up`, `music_loop`을 만든다: `python3 tool/generate_sounds.py`. 기존 세 효과음은 다시 쓰지 않는다. 새 소리가 필요하면 내려받지 말고 이 스크립트에 추가한다. 음악 루프는 끝과 처음이 이어지도록 원형 타임라인에서 렌더링한다.
+
+헤더의 스피커 버튼 하나로 효과음과 음악을 함께 켜고 끌 수 있으며 선택은 `shared_preferences`의 `sound_muted_v1`에 저장된다. CrazyGames 플랫폼 음소거와 광고 재생 중 음소거는 사용자 설정과 함께 적용된다. 웹에서는 첫 사용자 입력 뒤에 음악이 시작되고 탭이 숨겨지면 멈춘다. iOS는 오디오 세션 `.ambient`를 사용해 무음 스위치를 따르고 다른 앱의 음악을 끊지 않는다.
 
 ## 폰트 라이선스
 

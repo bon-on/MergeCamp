@@ -7,6 +7,8 @@ import UIKit
   private var tapPlayer: AVAudioPlayer?
   private var mergePlayer: AVAudioPlayer?
   private var warningPlayer: AVAudioPlayer?
+  private var effectPlayers: [AVAudioPlayer] = []
+  private var musicPlayer: AVAudioPlayer?
 
   override func application(
     _ application: UIApplication,
@@ -58,6 +60,21 @@ import UIKit
           volume: 0.68
         )
         result(nil)
+      case "play":
+        let args = call.arguments as? [String: Any]
+        if let asset = args?["asset"] as? String {
+          self.playEffect(asset: asset, volume: Float(args?["volume"] as? Double ?? 1.0))
+        }
+        result(nil)
+      case "startLoop":
+        let args = call.arguments as? [String: Any]
+        if let asset = args?["asset"] as? String {
+          self.startLoop(asset: asset, volume: Float(args?["volume"] as? Double ?? 1.0))
+        }
+        result(nil)
+      case "stopLoop":
+        self.stopLoop()
+        result(nil)
       case "disposeAudio":
         self.disposeAudio()
         result(nil)
@@ -94,7 +111,52 @@ import UIKit
     }
   }
 
+  // Generic one-shot effects may overlap, so finished players are pruned and
+  // the rest are kept alive until they stop.
+  private func playEffect(asset: String, volume: Float) {
+    configureAudioSession()
+    effectPlayers.removeAll { !$0.isPlaying }
+    guard let url = assetURL(for: asset) else {
+      return
+    }
+
+    do {
+      let player = try AVAudioPlayer(contentsOf: url)
+      player.volume = volume
+      player.prepareToPlay()
+      player.play()
+      effectPlayers.append(player)
+    } catch {
+    }
+  }
+
+  private func startLoop(asset: String, volume: Float) {
+    stopLoop()
+    configureAudioSession()
+    guard let url = assetURL(for: asset) else {
+      return
+    }
+
+    do {
+      let player = try AVAudioPlayer(contentsOf: url)
+      player.numberOfLoops = -1
+      player.volume = volume
+      player.prepareToPlay()
+      player.play()
+      musicPlayer = player
+    } catch {
+    }
+  }
+
+  private func stopLoop() {
+    musicPlayer?.stop()
+    musicPlayer = nil
+  }
+
   private func disposeAudio() {
+    stopLoop()
+    effectPlayers.forEach { $0.stop() }
+    effectPlayers.removeAll()
     tapPlayer?.stop()
     mergePlayer?.stop()
     warningPlayer?.stop()
