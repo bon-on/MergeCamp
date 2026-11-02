@@ -82,10 +82,15 @@ class CloudPrefsStore extends SharedPreferencesStorePlatform {
       // The mirror holds another snapshot: replace it before stamping it as
       // this player's, or its leftover keys would win on the next load.
       await _replaceMirror(local, values);
-      localStamp.setItem(
-        localStampKey,
-        jsonEncode(<String, Object?>{'rev': revision, 'owner': owner}),
-      );
+      try {
+        localStamp.setItem(
+          localStampKey,
+          jsonEncode(<String, Object?>{'rev': revision, 'owner': owner}),
+        );
+      } catch (error) {
+        // An old stamp only makes the next load redo this replacement.
+        debugPrint('Local save stamp failed: $error');
+      }
     }
     return CloudPrefsStore._(cloud, local, localStamp, owner, revision, values);
   }
