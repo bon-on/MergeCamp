@@ -111,30 +111,35 @@ class AdService {
     );
   }
 
-  void showInterstitialIfReady() {
+  /// Shows a loaded interstitial. Returns whether one is showing; if so,
+  /// [onClosed] runs once it is dismissed or fails to show.
+  bool showInterstitialIfReady({void Function()? onClosed}) {
     if (!_initialized) {
-      return;
+      return false;
     }
 
     final ad = _interstitialAd;
     if (ad == null) {
       unawaited(loadInterstitial());
-      return;
+      return false;
     }
 
     _interstitialAd = null;
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
+        onClosed?.call();
         unawaited(loadInterstitial());
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         debugPrint('Interstitial failed to show: $error');
         ad.dispose();
+        onClosed?.call();
         unawaited(loadInterstitial());
       },
     );
     ad.show();
+    return true;
   }
 
   void dispose() {

@@ -115,21 +115,6 @@ class CampHudLayout extends StatelessWidget {
               onDone: onChainDone,
             ),
           ),
-        if (discoveryTier > 0)
-          Positioned(
-            top: 8,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: DiscoveryBanner(
-                key: ValueKey('discovery-$discoverySerial'),
-                tier: discoveryTier,
-                theme: theme,
-                animateArt: loopingArt,
-                onDone: onDiscoveryDone,
-              ),
-            ),
-          ),
         if (toastsOnBoard)
           Positioned(
             left: 8,
@@ -138,6 +123,19 @@ class CampHudLayout extends StatelessWidget {
             child: _toastColumn(palette),
           ),
       ],
+    );
+  }
+
+  /// "New camp discovered!" card. Lives in the side column (wide) or over
+  /// the top HUD (narrow), never over the board cells.
+  Widget? _discoveryBanner(bool loopingArt) {
+    if (discoveryTier <= 0) return null;
+    return DiscoveryBanner(
+      key: ValueKey('discovery-$discoverySerial'),
+      tier: discoveryTier,
+      theme: theme,
+      animateArt: loopingArt,
+      onDone: onDiscoveryDone,
     );
   }
 
@@ -236,16 +234,19 @@ class CampHudLayout extends StatelessWidget {
   /// Desktop / 16:9 iframe: big centered board with side panels.
   Widget _buildWide(BoxConstraints c, CampPalette palette, bool loopingArt) {
     const pad = 16.0;
+    // A little extra room below the board so it never touches the bottom
+    // edge (hub page, browser chrome).
+    const bottomPad = 28.0;
     const gap = 20.0;
     final side = (c.maxWidth * 0.23).clamp(180.0, 300.0);
     final boardSide = math.max(
       200.0,
       math.min(
-        c.maxHeight - pad * 2,
+        c.maxHeight - pad - bottomPad,
         c.maxWidth - side * 2 - gap * 2 - pad * 2,
       ),
     );
-    final columnHeight = c.maxHeight - pad * 2;
+    final columnHeight = c.maxHeight - pad - bottomPad;
 
     final left = Column(
       mainAxisSize: MainAxisSize.min,
@@ -263,11 +264,25 @@ class CampHudLayout extends StatelessWidget {
           missions: missions.active,
           setNumber: missions.setNumber,
         ),
+        // Notices area: discovery banner and toasts, fixed height so the
+        // column never jumps.
         SizedBox(
-          height: 110,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: _toastColumn(palette),
+          height: 190,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              maxHeight: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_discoveryBanner(loopingArt) case final banner?) ...[
+                    const SizedBox(height: 10),
+                    banner,
+                  ],
+                  _toastColumn(palette),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -361,7 +376,7 @@ class CampHudLayout extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.all(pad),
+      padding: const EdgeInsets.fromLTRB(pad, pad, pad, bottomPad),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -382,169 +397,185 @@ class CampHudLayout extends StatelessWidget {
   Widget _buildNarrow(BoxConstraints c, CampPalette palette, bool loopingArt) {
     final small = c.maxWidth < 360;
     final buttonSize = small ? 36.0 : 40.0;
+    final banner = _discoveryBanner(loopingArt);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-          child: Column(
+          child: Stack(
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: FittedBox(
+              _narrowColumn(c, palette, loopingArt, small, buttonSize),
+              // Over the score/next panels (not the board); never takes input.
+              if (banner != null)
+                Positioned(
+                  top: buttonSize + 14,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: banner),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _narrowColumn(
+    BoxConstraints c,
+    CampPalette palette,
+    bool loopingArt,
+    bool small,
+    double buttonSize,
+  ) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: CampTitle(fontSize: 28),
+              ),
+            ),
+            const SizedBox(width: 6),
+            for (final button in _menuButtons(palette, buttonSize)) ...[
+              const SizedBox(width: 5),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: palette.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x2A000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: button,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        CampPanel(
+          palette: palette,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PanelCaption('Score', palette: palette),
+                    FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: CampTitle(fontSize: 28),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  for (final button in _menuButtons(palette, buttonSize)) ...[
-                    const SizedBox(width: 5),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: palette.panel,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x2A000000),
-                            blurRadius: 6,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: button,
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 8),
-              CampPanel(
-                palette: palette,
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PanelCaption('Score', palette: palette),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: ScoreValue(
-                              score: controller.score,
-                              palette: palette,
-                              fontSize: 28,
-                            ),
-                          ),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: _bestLine(palette, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 6,
-                      child: CampLevelCard(
+                      child: ScoreValue(
+                        score: controller.score,
                         palette: palette,
-                        progress: progress,
-                        compact: true,
+                        fontSize: 28,
                       ),
+                    ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: _bestLine(palette, fontSize: 12),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: small ? 64 : 74,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: CampPanel(
-                        palette: palette,
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              PanelCaption('Next', palette: palette),
-                              const SizedBox(width: 10),
-                              NextTiles(
-                                tiers: controller.previewTiers,
-                                theme: theme,
-                                size: 54,
-                                animate: loopingArt,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    CampPanel(
-                      palette: palette,
-                      padding: const EdgeInsets.all(6),
-                      highlight: trailAxeMode ? palette.accent : null,
-                      child: Center(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: _axeButton(palette, compact: true),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(width: 10),
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, area) {
-                    final stripHeight = small ? 58.0 : 66.0;
-                    final boardSide = math.max(
-                      120.0,
-                      math.min(
-                        area.maxWidth,
-                        area.maxHeight - stripHeight - 10,
-                      ),
-                    );
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox.square(
-                          dimension: boardSide,
-                          child: _board(
-                            palette,
-                            loopingArt,
-                            toastsOnBoard: true,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: stripHeight,
-                          child: MissionStrip(
-                            palette: palette,
-                            missions: missions.active,
-                            setNumber: missions.setNumber,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                flex: 6,
+                child: CampLevelCard(
+                  palette: palette,
+                  progress: progress,
+                  compact: true,
                 ),
               ),
             ],
           ),
         ),
-      ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: small ? 64 : 74,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: CampPanel(
+                  palette: palette,
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PanelCaption('Next', palette: palette),
+                        const SizedBox(width: 10),
+                        NextTiles(
+                          tiers: controller.previewTiers,
+                          theme: theme,
+                          size: 54,
+                          animate: loopingArt,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              CampPanel(
+                palette: palette,
+                padding: const EdgeInsets.all(6),
+                highlight: trailAxeMode ? palette.accent : null,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _axeButton(palette, compact: true),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, area) {
+              final stripHeight = small ? 58.0 : 66.0;
+              final boardSide = math.max(
+                120.0,
+                math.min(area.maxWidth, area.maxHeight - stripHeight - 10),
+              );
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox.square(
+                    dimension: boardSide,
+                    child: _board(palette, loopingArt, toastsOnBoard: true),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: stripHeight,
+                    child: MissionStrip(
+                      palette: palette,
+                      missions: missions.active,
+                      setNumber: missions.setNumber,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -256,23 +256,45 @@ class _CampTilePainter extends CustomPainter {
         ..color = _shade(base, 0.3),
     );
     final label = silhouette ? '?' : '$tier';
-    final text = TextPainter(
+    final text = _badgeText(
+      label,
+      silhouette ? _silhouetteShape : _shade(base, 0.55),
+      r * 1.25,
+    );
+    text.paint(
+      canvas,
+      center - Offset(text.width / 2, text.height / 2 - s * 0.003),
+    );
+  }
+
+  /// Laid-out badge labels, shared by all tiles. Animated tiles repaint every
+  /// frame, so building a TextPainter per paint would be wasteful. The cache
+  /// is small (labels x tile sizes) and reset if it ever grows.
+  static final Map<String, TextPainter> _badgeCache = <String, TextPainter>{};
+
+  static TextPainter _badgeText(String label, Color color, double fontSize) {
+    final size = (fontSize * 2).roundToDouble() / 2;
+    final key = '$label|${color.toARGB32()}|$size';
+    final cached = _badgeCache[key];
+    if (cached != null) return cached;
+    if (_badgeCache.length >= 96) {
+      for (final painter in _badgeCache.values) {
+        painter.dispose();
+      }
+      _badgeCache.clear();
+    }
+    return _badgeCache[key] = TextPainter(
       text: TextSpan(
         text: label,
         style: TextStyle(
-          color: silhouette ? _silhouetteShape : _shade(base, 0.55),
-          fontSize: r * 1.25,
+          color: color,
+          fontSize: size,
           height: 1,
           fontWeight: FontWeight.w900,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    text.paint(
-      canvas,
-      center - Offset(text.width / 2, text.height / 2 - s * 0.003),
-    );
-    text.dispose();
   }
 
   @override

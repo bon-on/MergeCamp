@@ -150,6 +150,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       ),
     );
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
+    // Portal mute settings and ads can change the platform mute at any time.
+    widget.platform.setAudioMuteListener(_feedback.refreshMute);
   }
 
   Future<void> _loadSoundMuted() async {
@@ -200,7 +202,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _progressChangedBeforeLoad = true;
       _xpBeforeLoad += xpGained;
     }
-    unawaited(_saveProgress());
+    // Saving before the stored value has loaded could overwrite it; the
+    // merge in _loadProgress saves the combined progress instead.
+    if (_progressLoaded) unawaited(_saveProgress());
   }
 
   Future<void> _saveProgress() async {
@@ -305,6 +309,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onHardwareKey);
+    widget.platform.setAudioMuteListener(null);
     _lifecycle.dispose();
     _focusNode.dispose();
     _playAgainFocus.dispose();
@@ -455,10 +460,21 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   void _handleRunEndedAds() {
     _completedRuns += 1;
     if (_completedRuns % 3 == 0) {
-      AdService.instance.showInterstitialIfReady();
+      // The music must not play over a full-screen ad.
+      _feedback.stopMusic();
+      final shown = AdService.instance.showInterstitialIfReady(
+        onClosed: _resumeMusicAfterAd,
+      );
+      if (!shown) _resumeMusicAfterAd();
     } else {
       unawaited(AdService.instance.loadInterstitial());
     }
+  }
+
+  void _resumeMusicAfterAd() {
+    if (!mounted) return;
+    _feedback.startMusic();
+    _feedback.refreshMute();
   }
 
   Future<void> _restartRun() async {
@@ -470,10 +486,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       setState(() {
         _breakAdInProgress = true;
       });
+      // Hold the music for the whole ad; it resumes (if not muted) after.
+      _feedback.stopMusic();
       try {
         await widget.platform.showRunBreakAd();
       } catch (error) {
         debugPrint('Run break ad failed: $error');
+      } finally {
+        _resumeMusicAfterAd();
       }
       if (!mounted) {
         return;

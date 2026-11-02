@@ -9,7 +9,8 @@ class AdService {
 
   Future<void> loadInterstitial() async {}
 
-  void showInterstitialIfReady() {}
+  /// Web builds have no interstitials; returns false (nothing shown).
+  bool showInterstitialIfReady({void Function()? onClosed}) => false;
 
   void dispose() {}
 }

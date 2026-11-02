@@ -236,6 +236,14 @@ void main() {
       expect(notified, 1);
       controller.addBonusScore(0);
       expect(controller.score, 150);
+      controller.debugLoadBoard(
+        List<int?>.filled(MergeCampController.cellCount, 1),
+        nextTier: 1,
+        score: 300,
+        isGameOver: true,
+      );
+      controller.addBonusScore(150);
+      expect(controller.score, 300, reason: 'final score stays final');
     });
 
     test('camp tier names cover eight tiers and clamp', () {

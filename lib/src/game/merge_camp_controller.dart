@@ -171,9 +171,10 @@ class MergeCampController extends ChangeNotifier {
     return true;
   }
 
-  /// Adds bonus points (mission reward) without touching any rule.
+  /// Adds bonus points (mission reward) without touching any rule. Ignored
+  /// after game over so the final score stays final.
   void addBonusScore(int points) {
-    if (points <= 0) return;
+    if (points <= 0 || _isGameOver) return;
     _score += points;
     notifyListeners();
   }

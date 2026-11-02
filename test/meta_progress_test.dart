@@ -86,11 +86,22 @@ void main() {
       expect(outcome.previousBest, 0);
       expect(outcome.xpGained, 100 + 60 + CampProgress.participationXp);
       expect(outcome.progress.bestScore, 1000);
-      expect(outcome.progress.discoveredTiers, {1, 2, 3, 4});
+      expect(outcome.progress.discoveredTiers, {1, 4});
       final lower = outcome.progress.applyRun(run(10));
       expect(lower.isNewBest, isFalse);
       expect(lower.progress.bestScore, 1000);
       expect(lower.previousBest, 1000);
+    });
+
+    test('participation XP needs a few placements', () {
+      final quick = const CampProgress.initial().applyRun(
+        run(0, placements: CampProgress.participationMinPlacements - 1),
+      );
+      expect(quick.xpGained, 0);
+      final real = const CampProgress.initial().applyRun(
+        run(0, placements: CampProgress.participationMinPlacements),
+      );
+      expect(real.xpGained, CampProgress.participationXp);
     });
 
     test('small runs still move the bar and level ups unlock themes', () {
@@ -163,7 +174,7 @@ void main() {
         await store.save(withXp(5).applyRun(run(700, tier: 3)).progress);
         final loaded = await store.load();
         expect(loaded.bestScore, 700);
-        expect(loaded.discoveredTiers, {1, 2, 3});
+        expect(loaded.discoveredTiers, {1, 3});
 
         SharedPreferences.setMockInitialValues({
           CampProgressStore.progressKey: '{not json',

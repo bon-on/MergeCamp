@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/art/camp_scenery.dart';
+import 'package:merge_camp/src/audio/sound_mute_store.dart';
 import 'package:merge_camp/src/art/camp_tile_art.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
@@ -24,6 +26,14 @@ class _SeenStore extends HowToPlayStore {
 
 /// Always picks index 0, so the first mission set is fixed:
 /// makeChain x2, buildTier Supply Shed, bigMerge 4+.
+class _UnmutedStore extends SoundMuteStore {
+  const _UnmutedStore();
+  @override
+  Future<bool> loadMuted() async => false;
+  @override
+  Future<void> saveMuted(bool muted) async {}
+}
+
 class _ZeroRandom implements Random {
   @override
   int nextInt(int max) => 0;
@@ -57,15 +67,19 @@ Future<_Harness> _pump(
   GamePlatform platform = const NoopGamePlatform(
     allowsResultRegistration: false,
   ),
+  MemoryCampProgressStore? store,
+  List<String>? audioCalls,
 }) async {
   for (final channel in const [
     MethodChannel('merge_camp/audio'),
     SystemChannels.platform,
   ]) {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (call) async => null,
-    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (channel.name == 'merge_camp/audio') audioCalls?.add(call.method);
+      return null;
+    });
     addTearDown(
       () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         channel,
@@ -81,13 +95,14 @@ Future<_Harness> _pump(
     scriptedTiers: scripted,
   );
   addTearDown(controller.dispose);
-  final store = MemoryCampProgressStore(progress);
+  store ??= MemoryCampProgressStore(progress);
   final missions = MissionBoard(random: _ZeroRandom());
   await tester.pumpWidget(
     MaterialApp(
       home: MergeCampScreen(
         controller: controller,
         howToPlayStore: const _SeenStore(),
+        soundMuteStore: const _UnmutedStore(),
         progressStore: store,
         missions: missions,
         platform: platform,
@@ -99,6 +114,54 @@ Future<_Harness> _pump(
   return _Harness(controller, store, missions);
 }
 
+/// Load completes only when the test says so.
+class _LateStore extends MemoryCampProgressStore {
+  _LateStore(super.value);
+  final Completer<void> gate = Completer<void>();
+  @override
+  Future<CampProgress> load() async {
+    await gate.future;
+    return value;
+  }
+}
+
+/// Platform whose mute flips (portal setting, ad) and notifies the screen.
+class _MutePlatform extends GamePlatform {
+  bool muted = false;
+  void Function()? listener;
+  Completer<void>? pendingAd;
+
+  void setMuted(bool value) {
+    muted = value;
+    listener?.call();
+  }
+
+  @override
+  Future<void> initialize() async {}
+  @override
+  void gameplayStart() {}
+  @override
+  void gameplayStop() {}
+  @override
+  Future<void> showRunBreakAd() {
+    pendingAd = Completer<void>();
+    return pendingAd!.future;
+  }
+
+  @override
+  bool get isAudioMuted => muted;
+  @override
+  bool get allowsResultRegistration => false;
+  @override
+  void setAudioMuteListener(void Function()? listener) =>
+      this.listener = listener;
+}
+
+int _tilesInGrid(WidgetTester tester) => find
+    .descendant(of: find.byType(GridView), matching: find.byType(CampTileArt))
+    .evaluate()
+    .length;
+
 Finder _cell(int index) => find
     .descendant(
       of: find.byType(GridView),
@@ -108,13 +171,24 @@ Finder _cell(int index) => find
 
 /// Checkerboard of tiers 1 and 2 with the last cell empty: placing a tier-3
 /// tile fills the board without merging and ends the run.
-void _loadOneMoveFromGameOver(MergeCampController c, {int score = 0}) {
+void _loadOneMoveFromGameOver(
+  MergeCampController c, {
+  int score = 0,
+  int placements = 10,
+}) {
   final board = List<int?>.generate(
     MergeCampController.cellCount,
     (index) => (index ~/ 4 + index % 4).isEven ? 1 : 2,
   );
   board[15] = null;
-  c.debugLoadBoard(board, nextTier: 3, trailAxes: 0, score: score);
+  c.debugLoadBoard(
+    board,
+    nextTier: 3,
+    trailAxes: 0,
+    score: score,
+    placements: placements,
+    lastAwardedAxeAt: placements,
+  );
 }
 
 void main() {
@@ -269,20 +343,21 @@ void main() {
     expect(find.text('Camp jammed!'), findsOneWidget);
     expect(find.byKey(const ValueKey('summary-score')), findsOneWidget);
     // The last placement built a Supply Shed, which completes the "Build a
-    // Supply Shed" mission; at game over that pays +150 instead of an axe.
+    // Supply Shed" mission. After game over neither an axe nor bonus score
+    // is paid (the final score stays final); the mission XP still counts.
     expect(h.missions.completedThisRun, 1);
-    expect(h.controller.score, 650);
+    expect(h.controller.score, 500);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('summary-score'))).data,
-      '650',
+      '500',
     );
-    expect(find.text('Best 650'), findsWidgets);
+    expect(find.text('Best 500'), findsWidgets);
     expect(find.text('New best!'), findsOneWidget);
     expect(find.text('Supply Shed'), findsOneWidget);
-    expect(h.store.value.bestScore, 650);
-    // 650 / 10 + 30 mission XP + 20 participation.
-    expect(h.store.value.totalXp, 115);
-    expect(find.text('+115 XP'), findsOneWidget);
+    expect(h.store.value.bestScore, 500);
+    // 500 / 10 + 30 mission XP + 20 participation.
+    expect(h.store.value.totalXp, 100);
+    expect(find.text('+100 XP'), findsOneWidget);
 
     // The board ignores input while the summary is open.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -294,7 +369,7 @@ void main() {
     expect(h.controller.isGameOver, isFalse);
     expect(h.controller.placements, 0);
     expect(find.text('Camp jammed!'), findsNothing);
-    expect(h.store.value.totalXp, 115, reason: 'the run is applied once');
+    expect(h.store.value.totalXp, 100, reason: 'the run is applied once');
   });
 
   testWidgets('Play again button and R both start a new run', (tester) async {
@@ -319,8 +394,19 @@ void main() {
     tester,
   ) async {
     final h = await _pump(tester);
-    await tester.tap(_cell(0));
-    await tester.pump();
+    // Five plain placements (no merges, no missions): participation only.
+    final board = List<int?>.filled(16, null);
+    h.controller.debugLoadBoard(
+      board,
+      nextTier: 1,
+      previewTiers: const [1, 2, 1, 2, 1],
+    );
+    for (final cell in const [0, 2, 8, 10, 15]) {
+      await tester.tap(_cell(cell));
+      await tester.pump();
+    }
+    expect(h.controller.placements, 5);
+    expect(h.controller.score, 0);
     expect(h.store.value.totalXp, 0);
     await tester.tap(find.byTooltip('Restart run'));
     await tester.pump();
@@ -328,10 +414,15 @@ void main() {
     expect(h.store.value.totalXp, CampProgress.participationXp);
     await tester.pump(const Duration(seconds: 3));
 
-    // An empty run gives nothing.
+    // A one-move run (restart farming) and an empty run give no XP.
+    await tester.tap(_cell(0));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Restart run'));
+    await tester.pump();
     await tester.tap(find.byTooltip('Restart run'));
     await tester.pump();
     expect(h.store.value.totalXp, CampProgress.participationXp);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('album: silhouettes for unknown camps, locked themes', (
@@ -417,6 +508,177 @@ void main() {
     await tester.pump();
     expect(h.controller.occupiedCount, 12);
     expect(danger, findsNothing);
+  });
+
+  testWidgets('music pauses for the run break ad and follows platform mute', (
+    tester,
+  ) async {
+    final calls = <String>[];
+    final platform = _MutePlatform();
+    final h = await _pump(tester, platform: platform, audioCalls: calls);
+    await tester.pump();
+    expect(calls.where((c) => c == 'startLoop'), hasLength(1));
+
+    // Portal mute setting changes without any user input.
+    calls.clear();
+    platform.setMuted(true);
+    expect(calls, ['stopLoop']);
+    platform.setMuted(false);
+    expect(calls, ['stopLoop', 'startLoop']);
+
+    _loadOneMoveFromGameOver(h.controller);
+    await tester.tap(_cell(15));
+    await tester.pumpAndSettle();
+    calls.clear();
+    await tester.tap(find.text('Play again'));
+    await tester.pump();
+    expect(calls, contains('stopLoop'), reason: 'music holds for the ad');
+    expect(calls, isNot(contains('startLoop')));
+
+    // The SDK mutes during the ad; finishing it while muted stays silent.
+    platform.setMuted(true);
+    calls.clear();
+    platform.pendingAd!.complete();
+    await tester.pumpAndSettle();
+    expect(h.controller.isGameOver, isFalse);
+    expect(calls, isNot(contains('startLoop')));
+    platform.setMuted(false);
+    expect(calls, contains('startLoop'));
+  });
+
+  testWidgets('a shake while effects run never leaves tiles covered', (
+    tester,
+  ) async {
+    final h = await _pump(tester);
+    final board = <int?>[
+      1, 2, 3, 4, //
+      2, 3, 4, 1, //
+      null, null, null, null, //
+      5, 5, null, null,
+    ];
+    h.controller.debugLoadBoard(
+      board,
+      nextTier: 7,
+      previewTiers: const [7, 6, 5, 8, 8],
+    );
+    await tester.pump();
+    // Two placements advance the effect clock.
+    for (final cell in const [8, 9]) {
+      await tester.tap(_cell(cell));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+    // A merge, then two quick placements; the last one crosses into danger
+    // and shakes the board while the merge effect is still running.
+    for (final cell in const [14, 10, 15]) {
+      await tester.tap(_cell(cell));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(h.controller.lastMergeSteps, isEmpty);
+    expect(h.controller.occupiedCount, 13);
+    expect(find.byKey(const ValueKey('danger-vignette')), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(_tilesInGrid(tester), 13, reason: 'no cell is left covered');
+    expect(find.byKey(const ValueKey('fx-origin')), findsNothing);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: 'ticker idle');
+  });
+
+  testWidgets('input during effects is applied immediately', (tester) async {
+    final h = await _pump(tester);
+    h.controller.debugLoadBoard(
+      List<int?>.filled(16, null),
+      nextTier: 1,
+      previewTiers: const [1, 2, 1, 2],
+      trailAxes: 2,
+    );
+    await tester.pump();
+    await tester.tap(_cell(0));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(_cell(5));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(h.controller.board[0], isNotNull);
+    expect(h.controller.board[5], isNotNull);
+
+    // Axe on a tile whose drop is still animating.
+    await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(_cell(5));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(h.controller.board[5], isNull);
+
+    // Keyboard: place on the cursor cell and axe it while it is covered.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown); // reveal at 0
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight); // 1
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(h.controller.board[1], isNotNull);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(h.controller.board[1], isNull);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_tilesInGrid(tester), 1);
+  });
+
+  testWidgets('progress made before the stored value loads is merged', (
+    tester,
+  ) async {
+    final store = _LateStore(
+      const CampProgress(
+        bestScore: 900,
+        discoveredTiers: {1, 3},
+        totalXp: 400,
+        selectedTheme: CampTheme.summer,
+      ),
+    );
+    final h = await _pump(tester, store: store);
+    h.controller.debugLoadBoard(
+      List<int?>.filled(16, null),
+      nextTier: 1,
+      previewTiers: const [1, 2, 1, 2, 1],
+    );
+    for (final cell in const [0, 2, 8, 10, 15]) {
+      await tester.tap(_cell(cell));
+      await tester.pump();
+    }
+    await tester.tap(find.byTooltip('Restart run'));
+    await tester.pump();
+    expect(store.saveCount, 0, reason: 'nothing saved before the load');
+
+    store.gate.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(store.saveCount, 1);
+    expect(store.value.bestScore, 900);
+    expect(store.value.discoveredTiers, {1, 2, 3});
+    expect(store.value.totalXp, 400 + CampProgress.participationXp);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('board keys do nothing while the album is open', (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.byTooltip('Camp album'));
+    await tester.pump();
+    await tester.pump();
+    for (final key in const [
+      LogicalKeyboardKey.arrowRight,
+      LogicalKeyboardKey.arrowDown,
+      LogicalKeyboardKey.enter,
+      LogicalKeyboardKey.space,
+      LogicalKeyboardKey.keyX,
+      LogicalKeyboardKey.keyR,
+      LogicalKeyboardKey.keyD,
+    ]) {
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+    }
+    expect(find.text('Camp Album'), findsOneWidget);
+    expect(h.controller.placements, 0);
+    expect(h.controller.board.every((t) => t == null), isTrue);
+    expect(find.byKey(const ValueKey('keyboard-cursor')), findsNothing);
   });
 
   for (final size in const [

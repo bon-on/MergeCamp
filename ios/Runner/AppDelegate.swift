@@ -9,12 +9,36 @@ import UIKit
   private var warningPlayer: AVAudioPlayer?
   private var effectPlayers: [AVAudioPlayer] = []
   private var musicPlayer: AVAudioPlayer?
+  // True while the music loop should be audible (startLoop until stopLoop),
+  // so it can resume after a call or Siri interrupted the audio session.
+  private var musicWanted = false
+  private var interruptionObserver: NSObjectProtocol?
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    interruptionObserver = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance(),
+      queue: .main
+    ) { [weak self] notification in
+      self?.handleInterruption(notification)
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func handleInterruption(_ notification: Notification) {
+    guard
+      let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: raw)
+    else {
+      return
+    }
+    if type == .ended, musicWanted, let player = musicPlayer, !player.isPlaying {
+      configureAudioSession()
+      player.play()
+    }
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
@@ -144,11 +168,13 @@ import UIKit
       player.prepareToPlay()
       player.play()
       musicPlayer = player
+      musicWanted = true
     } catch {
     }
   }
 
   private func stopLoop() {
+    musicWanted = false
     musicPlayer?.stop()
     musicPlayer = nil
   }

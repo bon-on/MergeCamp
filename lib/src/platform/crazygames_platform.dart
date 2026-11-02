@@ -19,6 +19,7 @@ class CrazyGamesPlatform extends GamePlatform {
   _Sdk? _sdk;
   bool _adPlaying = false;
   bool _settingsMuted = false;
+  void Function()? _muteListener;
 
   @override
   Future<void> initialize() async {
@@ -61,7 +62,7 @@ class CrazyGamesPlatform extends GamePlatform {
 
     final completer = Completer<void>();
     void finish() {
-      _adPlaying = false;
+      _setAdPlaying(false);
       if (!completer.isCompleted) {
         completer.complete();
       }
@@ -71,7 +72,7 @@ class CrazyGamesPlatform extends GamePlatform {
       sdk.ad.requestAd(
         'midgame',
         _AdCallbacks(
-          adStarted: (() => _adPlaying = true).toJS,
+          adStarted: (() => _setAdPlaying(true)).toJS,
           adFinished: finish.toJS,
           adError: ((JSAny? error) {
             debugPrint('CrazyGames midgame ad error: ${error?.dartify()}');
@@ -95,8 +96,30 @@ class CrazyGamesPlatform extends GamePlatform {
   @override
   bool get allowsResultRegistration => false;
 
+  @override
+  void setAudioMuteListener(void Function()? listener) {
+    _muteListener = listener;
+  }
+
   void _applySettings(_Settings? settings) {
-    _settingsMuted = settings?.muteAudio ?? false;
+    final muted = settings?.muteAudio ?? false;
+    if (muted == _settingsMuted) return;
+    _settingsMuted = muted;
+    _notifyMute();
+  }
+
+  void _setAdPlaying(bool playing) {
+    if (playing == _adPlaying) return;
+    _adPlaying = playing;
+    _notifyMute();
+  }
+
+  void _notifyMute() {
+    try {
+      _muteListener?.call();
+    } catch (error) {
+      debugPrint('Audio mute listener failed: $error');
+    }
   }
 
   void _call(void Function(_Sdk sdk) action) {

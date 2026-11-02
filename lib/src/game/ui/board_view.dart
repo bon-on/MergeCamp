@@ -59,6 +59,8 @@ class BoardView extends StatelessWidget {
         final gap = math.max(5.0, inner * 0.022);
         final geometry = BoardGeometry(side: inner, gap: gap);
         Widget content = Container(
+          // Keeps the board element when the danger glow is added in front.
+          key: const ValueKey('board-content'),
           width: side,
           height: side,
           padding: EdgeInsets.all(padding),
@@ -134,21 +136,13 @@ class BoardView extends StatelessWidget {
             content,
           ],
         );
-        if (shakeSerial > 0) {
-          content = TweenAnimationBuilder<double>(
-            key: ValueKey('shake-$shakeSerial'),
-            tween: Tween<double>(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 380),
-            builder: (context, t, child) => Transform.translate(
-              offset: Offset(
-                math.sin(t * math.pi * 7) * side * 0.012 * (1 - t),
-                0,
-              ),
-              child: child,
-            ),
-            child: content,
-          );
-        }
+        // Always in the tree: a changing key here would remount the board
+        // and the effect layer in the middle of their animations.
+        content = _BoardShake(
+          serial: shakeSerial,
+          amplitude: side * 0.012,
+          child: content,
+        );
         return Center(child: content);
       },
     );
@@ -293,6 +287,63 @@ class _BoardCellState extends State<_BoardCell> {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Plays one short horizontal shake whenever [serial] changes.
+class _BoardShake extends StatefulWidget {
+  const _BoardShake({
+    required this.serial,
+    required this.amplitude,
+    required this.child,
+  });
+
+  final int serial;
+  final double amplitude;
+  final Widget child;
+
+  @override
+  State<_BoardShake> createState() => _BoardShakeState();
+}
+
+class _BoardShakeState extends State<_BoardShake>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 380),
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(_BoardShake oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.serial != oldWidget.serial && widget.serial > 0) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        return Transform.translate(
+          offset: Offset(
+            math.sin(t * math.pi * 7) * widget.amplitude * (1 - t),
+            0,
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
     );
   }
 }

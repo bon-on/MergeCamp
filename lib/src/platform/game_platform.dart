@@ -23,6 +23,10 @@ abstract class GamePlatform {
 
   bool get isAudioMuted;
 
+  /// Registers a callback for when [isAudioMuted] may have changed (portal
+  /// mute setting, ad start/end). Platforms without such events ignore it.
+  void setAudioMuteListener(void Function()? listener) {}
+
   /// Whether the post-game prompt to submit scores to the Bon-on leaderboard
   /// may be shown. Portal builds keep players on the portal.
   bool get allowsResultRegistration;

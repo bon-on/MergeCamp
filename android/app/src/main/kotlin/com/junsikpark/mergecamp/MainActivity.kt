@@ -97,24 +97,31 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // Releases the player and closes the descriptor if any step fails, so a
+    // broken asset never leaks a MediaPlayer or a file handle.
     private fun openPlayer(asset: String, usage: Int): MediaPlayer {
         val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(asset)
-        val descriptor = assets.openFd(key)
         val player = MediaPlayer()
-        player.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setContentType(usage)
-                .setUsage(AudioAttributes.USAGE_GAME)
-                .build(),
-        )
-        player.setDataSource(
-            descriptor.fileDescriptor,
-            descriptor.startOffset,
-            descriptor.length,
-        )
-        descriptor.close()
-        player.prepare()
-        return player
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(usage)
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .build(),
+            )
+            assets.openFd(key).use { descriptor ->
+                player.setDataSource(
+                    descriptor.fileDescriptor,
+                    descriptor.startOffset,
+                    descriptor.length,
+                )
+            }
+            player.prepare()
+            return player
+        } catch (error: Exception) {
+            player.release()
+            throw error
+        }
     }
 
     // Generic one-shot effects may overlap; each player releases itself.

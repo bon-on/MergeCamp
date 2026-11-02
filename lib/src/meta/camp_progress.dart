@@ -48,7 +48,9 @@ class RunOutcome {
 ///   casual (35% noise) mean 2408  (p10 1260, p50 2208, p90 3876)
 ///   greedy             mean 3408  (p10 1728, p50 3240, p90 5256)
 /// With mission rewards (an axe per mission) players finish 3 to 5 missions
-/// per run. XP per run = score / 10 + missionXp + 20 (participation); mean
+/// per run. XP per run = score / 10 + missionXp + 20 (participation, only for
+/// runs with at least [participationMinPlacements] placements so quick
+/// restarts cannot farm it); mean
 /// XP per run measured 230 (random), 400 (casual), 510 (greedy), so an average
 /// player earns roughly 300. Even a 30 point run moves the bar by about 10%.
 /// Level curve: reaching level L+1 costs 230 + 55 * (L - 1) XP. Measured runs
@@ -71,8 +73,12 @@ class CampProgress {
   /// Highest camp tier that has an album entry.
   static const int maxAlbumTier = 8;
 
-  /// XP granted just for finishing a run with at least one placement.
+  /// XP granted just for finishing a run with at least
+  /// [participationMinPlacements] placements.
   static const int participationXp = 20;
+
+  /// Placements a run needs before it earns [participationXp].
+  static const int participationMinPlacements = 5;
 
   final int bestScore;
   final Set<int> discoveredTiers;
@@ -129,19 +135,17 @@ class CampProgress {
     final xp =
         xpForScore(summary.score) +
         (summary.missionXp < 0 ? 0 : summary.missionXp) +
-        participationXp;
+        (summary.placements >= participationMinPlacements
+            ? participationXp
+            : 0);
     final isNewBest = summary.score > bestScore;
     var next = _copy(
       bestScore: isNewBest ? summary.score : bestScore,
       totalXp: totalXp + xp,
     );
-    for (
-      var tier = 1;
-      tier <= summary.highestTier.clamp(1, maxAlbumTier);
-      tier++
-    ) {
-      next = next.withDiscovered(tier);
-    }
+    // The screen records every camp the moment it is built; the run only
+    // guarantees its highest camp is in the album.
+    next = next.withDiscovered(summary.highestTier);
     final levelAfter = next.level;
     return RunOutcome(
       progress: next,

@@ -48,6 +48,9 @@ class FxTiming {
 
 abstract class _FxEvent {
   Duration? start;
+
+  /// Random seed for this event's particles.
+  int seed = 0;
   Duration get length;
 
   /// Cell the event paints a tile over (the real cell hides meanwhile).
@@ -104,6 +107,11 @@ class BoardFx extends ChangeNotifier {
   );
   int _seed = 1;
 
+  /// Effect clock. It belongs to the queue, not to the layer, so a layer
+  /// that is rebuilt from scratch (shake, layout switch) continues the same
+  /// timeline instead of restarting at zero under already started events.
+  Duration _clock = Duration.zero;
+
   bool get isActive => _events.isNotEmpty;
 
   /// A tile was placed at [index]; [steps] are its merges (may be empty).
@@ -134,7 +142,15 @@ class BoardFx extends ChangeNotifier {
     super.dispose();
   }
 
-  int _nextSeed() => _seed++;
+  /// Stamps new events with the current clock and a particle seed.
+  void _stampNew() {
+    for (final event in _events) {
+      if (event.start == null) {
+        event.start = _clock;
+        event.seed = _seed++;
+      }
+    }
+  }
 
   void _cancelCovers() {
     for (final event in _events) {
@@ -186,8 +202,9 @@ class BoardFxLayer extends StatefulWidget {
 class _BoardFxLayerState extends State<BoardFxLayer>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker = createTicker(_onTick);
-  Duration _now = Duration.zero;
-  final Map<_FxEvent, int> _seeds = <_FxEvent, int>{};
+
+  // fx clock value when the ticker last started (its elapsed restarts at 0).
+  Duration _base = Duration.zero;
 
   @override
   void initState() {
@@ -202,6 +219,7 @@ class _BoardFxLayerState extends State<BoardFxLayer>
     if (oldWidget.fx != widget.fx) {
       oldWidget.fx.removeListener(_onFxChanged);
       widget.fx.addListener(_onFxChanged);
+      _onFxChanged();
     }
   }
 
@@ -213,33 +231,21 @@ class _BoardFxLayerState extends State<BoardFxLayer>
   }
 
   void _onFxChanged() {
-    for (final event in widget.fx._events) {
-      event.start ??= _now;
-      _seeds.putIfAbsent(event, widget.fx._nextSeed);
-    }
-    _seeds.removeWhere((event, _) => !widget.fx._events.contains(event));
-    if (widget.fx.isActive && !_ticker.isActive) {
+    final fx = widget.fx;
+    fx._stampNew();
+    if (fx.isActive && !_ticker.isActive) {
+      _base = fx._clock;
       _ticker.start();
-    } else if (!widget.fx.isActive && _ticker.isActive) {
+    } else if (!fx.isActive && _ticker.isActive) {
       _ticker.stop();
     }
     if (mounted) setState(() {});
   }
 
-  // Ticker elapsed restarts at zero on every start, so keep a running clock.
-  Duration _base = Duration.zero;
-  Duration _lastElapsed = Duration.zero;
-
   void _onTick(Duration elapsed) {
-    if (elapsed < _lastElapsed) _base += _lastElapsed;
-    _lastElapsed = elapsed;
-    _now = _base + elapsed;
-    final alive = widget.fx._prune(_now);
-    if (!alive) {
-      _ticker.stop();
-      _base = _now;
-      _lastElapsed = Duration.zero;
-    }
+    final fx = widget.fx;
+    fx._clock = _base + elapsed;
+    if (!fx._prune(fx._clock)) _ticker.stop();
     setState(() {});
   }
 
@@ -254,8 +260,9 @@ class _BoardFxLayerState extends State<BoardFxLayer>
     final popups = <Widget>[];
 
     for (final event in events) {
-      final t = _now - (event.start ?? _now);
-      final seed = _seeds[event] ?? 0;
+      final now = widget.fx._clock;
+      final t = now - (event.start ?? now);
+      final seed = event.seed;
       if (event is _PlaceEvent) {
         _buildPlace(event, t, seed, g, palette, tiles, sparks, popups);
       } else if (event is _RemoveEvent) {
@@ -437,7 +444,7 @@ class _BoardFxLayerState extends State<BoardFxLayer>
     if (f < 1) {
       tiles.add(
         Positioned.fromRect(
-          key: const ValueKey('fx-removal'),
+          key: ValueKey('fx-removal-${e.seed}'),
           rect: rect,
           child: Opacity(
             opacity: (1 - f).clamp(0.0, 1.0),
