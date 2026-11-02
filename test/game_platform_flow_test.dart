@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/meta/camp_progress_store.dart';
 import 'package:merge_camp/src/platform/game_platform.dart';
 
 class _SeenStore extends HowToPlayStore {
@@ -69,6 +70,8 @@ Future<void> _pumpScreen(
         platform: platform,
         controller: controller,
         howToPlayStore: const _SeenStore(),
+        progressStore: MemoryCampProgressStore(),
+        animateArt: false,
       ),
     ),
   );
@@ -100,7 +103,7 @@ void main() {
     expect(controller.isGameOver, isTrue);
     expect(platform.events, <String>['start', 'stop']);
 
-    await tester.tap(find.text('Restart Run'));
+    await tester.tap(find.text('Play again'));
     await tester.pump();
     expect(platform.events, <String>['start', 'stop', 'ad']);
     expect(controller.isGameOver, isTrue, reason: 'run waits for the ad');

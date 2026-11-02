@@ -1,17 +1,28 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
+import '../art/camp_palette.dart';
+import '../art/camp_scenery.dart';
+import '../art/camp_tile_art.dart';
 import '../audio/sound_mute_store.dart';
+import '../meta/camp_progress.dart';
+import '../meta/camp_progress_store.dart';
+import '../meta/camp_theme.dart';
+import '../meta/missions.dart';
 import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'how_to_play.dart';
 import 'merge_camp_controller.dart';
+import 'ui/album_overlay.dart';
+import 'ui/banners.dart';
+import 'ui/board_fx.dart';
+import 'ui/camp_layout.dart';
+import 'ui/run_summary_overlay.dart';
 import '../../result_registration.dart';
 
 class MergeCampScreen extends StatefulWidget {
@@ -22,6 +33,9 @@ class MergeCampScreen extends StatefulWidget {
     this.controller,
     this.howToPlayStore = const HowToPlayStore(),
     this.soundMuteStore = const SoundMuteStore(),
+    this.progressStore = const CampProgressStore(),
+    this.missions,
+    this.animateArt = true,
   });
 
   final bool enableAds;
@@ -36,6 +50,16 @@ class MergeCampScreen extends StatefulWidget {
   /// Persisted user mute choice; tests inject a fake.
   final SoundMuteStore soundMuteStore;
 
+  /// Best score, album, camp XP and theme; tests inject a memory store.
+  final CampProgressStore progressStore;
+
+  /// Injected for tests (seeded missions); when null the screen owns one.
+  final MissionBoard? missions;
+
+  /// Looping art motion (tile loops, scenery, danger pulse). Tests turn it
+  /// off so pumpAndSettle can settle; one-shot effects still play.
+  final bool animateArt;
+
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
 }
@@ -43,6 +67,9 @@ class MergeCampScreen extends StatefulWidget {
 class _MergeCampScreenState extends State<MergeCampScreen> {
   late final MergeCampController _controller;
   late final FeedbackFx _feedback;
+  late final MissionBoard _missions;
+  late final AppLifecycleListener _lifecycle;
+  final BoardFx _fx = BoardFx();
   bool _trailAxeMode = false;
   // Keyboard cursor; null until the player uses the keyboard.
   int? _cursor;
@@ -52,6 +79,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     debugLabel: 'MergeCampBoard',
     skipTraversal: true,
   );
+  final FocusNode _playAgainFocus = FocusNode(debugLabel: 'PlayAgain');
   // User sound toggle; effective mute also includes the platform mute.
   bool _soundMuted = false;
   bool _soundTouched = false;
@@ -63,24 +91,65 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   // (_tutorialLoading) and while the card is open (_showHowTo).
   bool _tutorialLoading = true;
   bool _showHowTo = false;
+  bool _albumOpen = false;
 
   // Whether the platform currently believes gameplay is running.
   bool _gameplayActive = false;
 
+  // Meta progress. Changes made before the stored value has loaded are
+  // merged into it once it arrives.
+  CampProgress _progress = const CampProgress.initial();
+  bool _progressLoaded = false;
+  bool _progressChangedBeforeLoad = false;
+  int _xpBeforeLoad = 0;
+  bool _themeTouched = false;
+
+  // Run bookkeeping driven by controller notifications.
+  int _seenPlacements = 0;
+  bool _handlingChange = false;
+  bool _runApplied = false;
+  RunReport? _report;
+
+  // Presentation state.
+  bool _reduceMotion = false;
+  bool _wasDanger = false;
+  int _shakeSerial = 0;
+  int _chainSerial = 0;
+  int _chainLength = 0;
+  int _discoverySerial = 0;
+  int _discoveryTier = 0;
+  int _toastSerial = 0;
+  final List<ToastMessage> _toasts = <ToastMessage>[];
+
+  static const int _missionBonusScore = 150;
+
   bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
+  bool get _overlayOpen => _albumOpen || _controller.isGameOver;
+  CampTheme get _theme => _progress.selectedTheme;
+  bool get _effectsOn => !_reduceMotion;
 
   @override
   void initState() {
     super.initState();
     unawaited(_checkTutorial());
-    unawaited(_loadSoundMuted());
     _feedback = FeedbackFx(
       isMuted: () => _soundMuted || widget.platform.isAudioMuted,
     );
     unawaited(_feedback.initialize());
+    unawaited(_loadSoundMuted());
+    unawaited(_loadProgress());
+    _missions = widget.missions ?? MissionBoard();
     _controller = (widget.controller ?? MergeCampController())
       ..addListener(_onChanged);
     _wasGameOver = _controller.isGameOver;
+    _seenPlacements = _controller.placements;
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (state) => _feedback.setAppVisible(
+        state == AppLifecycleState.resumed ||
+            state == AppLifecycleState.inactive,
+      ),
+    );
+    HardwareKeyboard.instance.addHandler(_onHardwareKey);
   }
 
   Future<void> _loadSoundMuted() async {
@@ -88,9 +157,56 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     try {
       muted = await widget.soundMuteStore.loadMuted();
     } catch (_) {}
+    if (!mounted) return;
     // A toggle made before the load finished wins over the stored value.
-    if (!mounted || _soundTouched) return;
-    setState(() => _soundMuted = muted);
+    if (!_soundTouched) setState(() => _soundMuted = muted);
+    // Music waits for the stored mute so a muted player never hears a blip
+    // (and, on web, for the first user input).
+    _feedback.startMusic();
+  }
+
+  Future<void> _loadProgress() async {
+    CampProgress loaded;
+    try {
+      loaded = await widget.progressStore.load();
+    } catch (_) {
+      loaded = const CampProgress.initial();
+    }
+    if (!mounted) return;
+    setState(() {
+      _progressLoaded = true;
+      if (!_progressChangedBeforeLoad) {
+        _progress = loaded;
+        return;
+      }
+      _progress = CampProgress(
+        bestScore: math.max(loaded.bestScore, _progress.bestScore),
+        discoveredTiers: {
+          ...loaded.discoveredTiers,
+          ..._progress.discoveredTiers,
+        },
+        totalXp: loaded.totalXp + _xpBeforeLoad,
+        selectedTheme: _themeTouched
+            ? _progress.selectedTheme
+            : loaded.selectedTheme,
+      );
+    });
+    if (_progressChangedBeforeLoad) unawaited(_saveProgress());
+  }
+
+  void _setProgress(CampProgress next, {int xpGained = 0}) {
+    _progress = next;
+    if (!_progressLoaded) {
+      _progressChangedBeforeLoad = true;
+      _xpBeforeLoad += xpGained;
+    }
+    unawaited(_saveProgress());
+  }
+
+  Future<void> _saveProgress() async {
+    try {
+      await widget.progressStore.save(_progress);
+    } catch (_) {}
   }
 
   void _toggleSound() {
@@ -99,6 +215,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _soundTouched = true;
       _soundMuted = muted;
     });
+    _feedback.refreshMute();
     _focusNode.requestFocus();
     unawaited(_saveSoundMuted(muted));
   }
@@ -107,6 +224,18 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     try {
       await widget.soundMuteStore.saveMuted(muted);
     } catch (_) {}
+  }
+
+  /// Any pointer or key input: browsers only allow music after one, and the
+  /// platform mute may have changed meanwhile.
+  void _onAnyInput() {
+    _feedback.onUserInput();
+    _feedback.refreshMute();
+  }
+
+  bool _onHardwareKey(KeyEvent event) {
+    if (event is KeyDownEvent) _onAnyInput();
+    return false;
   }
 
   Future<void> _checkTutorial() async {
@@ -130,7 +259,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   void _closeHowToPlay() {
     setState(() => _showHowTo = false);
     _syncGameplay();
-    _focusNode.requestFocus();
+    _refocus();
     unawaited(_markTutorialSeen());
   }
 
@@ -140,10 +269,48 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     } catch (_) {}
   }
 
+  void _openAlbum() {
+    if (_albumOpen) return;
+    setState(() {
+      _albumOpen = true;
+      _trailAxeMode = false;
+    });
+    _syncGameplay();
+  }
+
+  void _closeAlbum() {
+    if (!_albumOpen) return;
+    setState(() => _albumOpen = false);
+    _syncGameplay();
+    _refocus();
+  }
+
+  void _selectTheme(CampTheme theme) {
+    final next = _progress.withTheme(theme);
+    if (identical(next, _progress) || next.selectedTheme == _theme) return;
+    _themeTouched = true;
+    setState(() => _setProgress(next));
+  }
+
+  /// Focus goes back to the board, or to "Play again" while the run summary
+  /// is up.
+  void _refocus() {
+    if (_controller.isGameOver && _playAgainFocus.context != null) {
+      _playAgainFocus.requestFocus();
+    } else {
+      _focusNode.requestFocus();
+    }
+  }
+
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onHardwareKey);
+    _lifecycle.dispose();
     _focusNode.dispose();
+    _playAgainFocus.dispose();
+    _feedback.stopMusic();
     unawaited(_feedback.dispose());
+    _fx.dispose();
     _controller.removeListener(_onChanged);
     if (widget.controller == null) {
       _controller.dispose();
@@ -152,20 +319,123 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   void _onChanged() {
-    final runEnded = _controller.isGameOver && !_wasGameOver;
-    _wasGameOver = _controller.isGameOver;
-    if (runEnded) {
-      _syncGameplay();
-      if (widget.platform.allowsResultRegistration) {
-        _offerResultRegistration();
+    // Mission rewards notify again from inside this handler; the outer call
+    // already handles the new state.
+    if (_handlingChange) return;
+    _handlingChange = true;
+    try {
+      final placed =
+          _controller.placements != _seenPlacements &&
+          _controller.lastPlacedIndex != null;
+      _seenPlacements = _controller.placements;
+      if (placed) _afterPlacement();
+
+      final danger = _controller.occupiedCount >= dangerOccupied;
+      if (danger && !_wasDanger && placed && _effectsOn) _shakeSerial += 1;
+      _wasDanger = danger;
+
+      final runEnded = _controller.isGameOver && !_wasGameOver;
+      _wasGameOver = _controller.isGameOver;
+      if (runEnded) {
+        _trailAxeMode = false;
+        _report = RunReport(
+          score: _controller.score,
+          highestTier: _controller.highestTier,
+          bestChain: _controller.bestMergeChain,
+          missionsCompleted: _missions.completedThisRun,
+          outcome: _applyRun(),
+        );
+        _syncGameplay();
+        if (widget.platform.allowsResultRegistration) {
+          _offerResultRegistration();
+        }
+        if (widget.enableAds) {
+          _handleRunEndedAds();
+        }
       }
-      if (widget.enableAds) {
-        _handleRunEndedAds();
-      }
+    } finally {
+      _handlingChange = false;
     }
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Effects, missions and discoveries of the placement that just happened.
+  /// The rules have already been applied; everything here trails behind.
+  void _afterPlacement() {
+    final index = _controller.lastPlacedIndex!;
+    final steps = _controller.lastMergeSteps;
+    final placedTier = steps.isEmpty
+        ? (_controller.board[index] ?? 1)
+        : steps.first.fromTier;
+
+    if (_effectsOn) _fx.addPlacement(index, placedTier, steps);
+    if (steps.length >= 2) {
+      _chainLength = steps.length;
+      _chainSerial += 1;
+    }
+
+    for (final mission in _missions.update(_controller)) {
+      final axe = _controller.grantTrailAxe();
+      if (!axe) _controller.addBonusScore(_missionBonusScore);
+      unawaited(_feedback.mission());
+      _toast(
+        'Mission complete: ${mission.label} '
+        '(${axe ? '+1 Trail Axe' : '+$_missionBonusScore'})',
+        Icons.emoji_events_rounded,
+      );
+    }
+
+    var next = _progress;
+    var newest = 0;
+    final created = <int>{
+      placedTier.clamp(1, CampTileArt.maxArtTier),
+      for (final step in steps) step.toTier.clamp(1, CampTileArt.maxArtTier),
+    }.toList()..sort();
+    for (final tier in created) {
+      if (!next.discoveredTiers.contains(tier)) {
+        next = next.withDiscovered(tier);
+        newest = tier;
+      }
+    }
+    if (newest > 0) {
+      _setProgress(next);
+      unawaited(_feedback.discover());
+      _discoveryTier = newest;
+      _discoverySerial += 1;
+    }
+  }
+
+  void _toast(String text, IconData icon) {
+    _toastSerial += 1;
+    _toasts.add(ToastMessage(id: _toastSerial, text: text, icon: icon));
+    // Only the latest few stay on screen.
+    while (_toasts.length > 2) {
+      _toasts.removeAt(0);
+    }
+  }
+
+  /// Applies the current run to the saved progress once. Returns null when
+  /// nothing was applied (already done, or no placements).
+  RunOutcome? _applyRun() {
+    if (_runApplied) return null;
+    _runApplied = true;
+    if (_controller.placements <= 0) return null;
+    final outcome = _progress.applyRun(
+      RunSummary(
+        score: _controller.score,
+        highestTier: _controller.highestTier,
+        bestChain: _controller.bestMergeChain,
+        placements: _controller.placements,
+        missionXp: _missions.xpEarned,
+      ),
+    );
+    _setProgress(outcome.progress, xpGained: outcome.xpGained);
+    if (outcome.levelAfter > outcome.levelBefore) {
+      unawaited(_feedback.levelUp());
+    }
+    return outcome;
   }
 
   void _offerResultRegistration() {
@@ -209,16 +479,33 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         return;
       }
       _breakAdInProgress = false;
+    } else {
+      // Restarting mid-run still counts the run (no-op without placements).
+      final outcome = _applyRun();
+      if (outcome != null && outcome.levelAfter > outcome.levelBefore) {
+        _toast(
+          'Camp level up! Lv ${outcome.levelAfter}',
+          Icons.arrow_upward_rounded,
+        );
+      }
     }
     _trailAxeMode = false;
+    _report = null;
+    _runApplied = false;
+    _missions.reset();
+    _fx.clear();
+    _chainLength = 0;
     _controller.restart();
     _syncGameplay();
+    _focusNode.requestFocus();
   }
 
   /// Reports gameplay start/stop to the platform exactly on transitions:
-  /// running only while no tutorial is open and the run is not over.
+  /// running only while no tutorial or album is open and the run is not
+  /// over (the run summary is up while it is).
   void _syncGameplay() {
-    final wantActive = !_tutorialBlocking && !_controller.isGameOver;
+    final wantActive =
+        !_tutorialBlocking && !_controller.isGameOver && !_albumOpen;
     if (wantActive == _gameplayActive) return;
     _gameplayActive = wantActive;
     if (wantActive) {
@@ -228,7 +515,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
   }
 
-  static const int _boardColumns = 4;
+  static const int _boardColumns = MergeCampController.boardWidth;
+
+  bool _isKey(LogicalKeyboardKey key, List<LogicalKeyboardKey> keys) =>
+      keys.contains(key);
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
@@ -247,6 +537,30 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     // Held keys only repeat cursor moves: a key held on the card's "Play"
     // button must not place a tile, swing the axe or restart once it closes.
     final isRepeat = event is KeyRepeatEvent;
+    const activate = [
+      LogicalKeyboardKey.enter,
+      LogicalKeyboardKey.numpadEnter,
+      LogicalKeyboardKey.space,
+    ];
+    // Album and run summary: the board gets no input. Their buttons keep
+    // Enter/Space (focus activation) and arrows (focus moves).
+    if (_albumOpen) {
+      if (key == LogicalKeyboardKey.escape) {
+        if (!isRepeat) _closeAlbum();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (_controller.isGameOver) {
+      if (key == LogicalKeyboardKey.keyR ||
+          (_isKey(key, activate) &&
+              FocusManager.instance.primaryFocus == _focusNode)) {
+        if (!isRepeat) unawaited(_restartRun());
+        return KeyEventResult.handled;
+      }
+      if (_isKey(key, activate) && isRepeat) return KeyEventResult.handled;
+      return KeyEventResult.ignored;
+    }
     if (key == LogicalKeyboardKey.keyR) {
       if (isRepeat) return KeyEventResult.handled;
       unawaited(_restartRun());
@@ -276,9 +590,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       setState(() => _cursor = _cursor == null ? 0 : next);
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter ||
-        key == LogicalKeyboardKey.space) {
+    if (_isKey(key, activate)) {
       if (isRepeat) return KeyEventResult.handled;
       if (_cursor == null) {
         setState(() => _cursor = 0);
@@ -296,6 +608,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       }
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.escape && _trailAxeMode) {
+      setState(() => _trailAxeMode = false);
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
   }
 
@@ -304,7 +620,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     bool forceAxe = false,
     bool fromPointer = false,
   }) async {
-    if (_breakAdInProgress || _handlingTap || _tutorialBlocking) return;
+    if (_breakAdInProgress || _handlingTap || _tutorialBlocking || _albumOpen) {
+      return;
+    }
     if (fromPointer && _cursor != null) {
       setState(() => _cursor = null);
     }
@@ -315,10 +633,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         await _feedback.warning();
         return;
       }
+      final tierBefore = _controller.board[index];
       final result = useAxe
           ? _controller.useTrailAxe(index)
           : _controller.place(index);
       if (result.action == MergeAction.removed && mounted) {
+        if (_effectsOn && tierBefore != null) {
+          _fx.addRemoval(index, tierBefore);
+        }
         setState(() {
           _trailAxeMode = false;
         });
@@ -327,7 +649,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         case MergeAction.placed:
           await _feedback.tap();
         case MergeAction.merged:
-          await _feedback.merge();
+          final chain = _controller.lastMergeChain;
+          await (chain >= 2 ? _feedback.chain(chain) : _feedback.merge());
         case MergeAction.removed:
           await _feedback.tap();
         case MergeAction.blocked:
@@ -340,469 +663,155 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
   }
 
+  void _toggleTrailAxe() {
+    setState(() => _trailAxeMode = !_trailAxeMode);
+    _focusNode.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final board = _controller.board;
+    _reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final palette = CampPalette.of(_theme);
+    final loopingArt = widget.animateArt && !_reduceMotion;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: Focus(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _onKeyEvent,
-        child: Stack(
-          children: [
-            // Keep Tab traversal inside the how-to-play card while it is open.
-            ExcludeFocus(
-              excluding: _tutorialBlocking,
-              child: SafeArea(
-                child: Center(
-                  child: ConstrainedBox(
-                    // Keeps the portrait layout readable in landscape desktop iframes.
-                    constraints: const BoxConstraints(
-                      maxWidth: kIsWeb ? 560 : double.infinity,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-                      child: Column(
-                        children: [
-                          _TopBar(
+      backgroundColor: palette.skyBottom,
+      body: Listener(
+        onPointerDown: (_) => _onAnyInput(),
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _onKeyEvent,
+          child: DefaultTextStyle.merge(
+            style: TextStyle(color: palette.textPrimary),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CampScenery(theme: _theme, animate: loopingArt),
+                ),
+                // Keep Tab traversal inside the open card or overlay.
+                ExcludeFocus(
+                  excluding: _tutorialBlocking || _overlayOpen,
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: CampHudLayout(
                             controller: _controller,
-                            onRestart: _restartRun,
-                            onHelp: _openHowToPlay,
-                            soundMuted: _soundMuted,
-                            onToggleSound: _toggleSound,
-                          ),
-                          const SizedBox(height: 8),
-                          _ToolBar(
-                            controller: _controller,
+                            theme: _theme,
+                            fx: _fx,
+                            progress: _progress,
+                            missions: _missions,
+                            cursor: _cursor,
                             trailAxeMode: _trailAxeMode,
-                            onToggleTrailAxe: _controller.canUseTrailAxe
-                                ? () {
-                                    setState(() {
-                                      _trailAxeMode = !_trailAxeMode;
-                                    });
-                                  }
-                                : null,
+                            soundMuted: _soundMuted,
+                            loopingArt: loopingArt,
+                            shakeSerial: _shakeSerial,
+                            chainLength: _chainLength,
+                            chainSerial: _chainSerial,
+                            discoveryTier: _discoveryTier,
+                            discoverySerial: _discoverySerial,
+                            toasts: _toasts,
+                            onCellTap: (index) =>
+                                _handleCellTap(index, fromPointer: true),
+                            onOpenAlbum: _openAlbum,
+                            onOpenHelp: _openHowToPlay,
+                            onToggleSound: _toggleSound,
+                            onRestart: () => unawaited(_restartRun()),
+                            onToggleTrailAxe: _toggleTrailAxe,
+                            onChainDone: () {
+                              if (mounted) setState(() => _chainLength = 0);
+                            },
+                            onDiscoveryDone: () {
+                              if (mounted) setState(() => _discoveryTier = 0);
+                            },
+                            onToastDone: (toast) {
+                              if (!mounted) return;
+                              setState(() => _toasts.remove(toast));
+                            },
                           ),
-                          const SizedBox(height: 10),
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final boardSize = math.min(
-                                  constraints.maxWidth,
-                                  constraints.maxHeight,
-                                );
-                                return Center(
-                                  child: SizedBox.square(
-                                    dimension: boardSize,
-                                    child: GridView.builder(
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: board.length,
-                                      gridDelegate:
-                                          const SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: 4,
-                                            crossAxisSpacing: 8,
-                                            mainAxisSpacing: 8,
-                                          ),
-                                      itemBuilder: (context, index) {
-                                        final tier = board[index];
-                                        return _CampTile(
-                                          tier: tier,
-                                          trailAxeMode: _trailAxeMode,
-                                          highlighted: _cursor == index,
-                                          onTap: () => _handleCellTap(
-                                            index,
-                                            fromPointer: true,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _controller.isGameOver
-                                ? 'Board jammed. Restart for another run.'
-                                : _cursor != null
-                                ? 'Arrows/WASD move, Enter/Space place, X axe, R restart.'
-                                : _trailAxeMode
-                                ? 'Tap an occupied camp tile to clear a path.'
-                                : 'Connect 3 matching camp tiles to raise the camp.',
-                            style: const TextStyle(
-                              color: Color(0xFFD8E4D9),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (_controller.isGameOver) ...[
-                            const SizedBox(height: 8),
-                            FilledButton(
-                              onPressed: _breakAdInProgress
-                                  ? null
-                                  : _restartRun,
-                              child: const Text('Restart Run'),
-                            ),
-                          ],
-                          AdBanner(enabled: widget.enableAds),
-                        ],
-                      ),
+                        ),
+                        AdBanner(enabled: widget.enableAds),
+                      ],
                     ),
                   ),
                 ),
-              ),
-            ),
-            // Taps must not reach the board before the seen-flag read
-            // decides whether the how-to-play card opens.
-            if (_tutorialLoading) const Positioned.fill(child: AbsorbPointer()),
-            if (_showHowTo)
-              Positioned.fill(
-                child: HowToPlayOverlay(
-                  steps: _howToPlaySteps,
-                  onClose: _closeHowToPlay,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-const List<HowToPlayStep> _howToPlaySteps = [
-  HowToPlayStep(
-    icon: Icons.grid_view,
-    text:
-        'Match 3 or more touching camp tiles to merge them into a higher '
-        'tier. Keep the 4x4 board from jamming.',
-  ),
-  HowToPlayStep(
-    icon: Icons.touch_app,
-    text:
-        'Tap an empty tile to place the next piece. Keyboard: arrows/WASD '
-        'move, Enter/Space place.',
-  ),
-  HowToPlayStep(
-    icon: Icons.hardware,
-    text:
-        'Stuck? The Trail Axe clears one tile (X on keyboard). You get one '
-        'now and more every 10 moves.',
-  ),
-];
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.controller,
-    required this.onRestart,
-    required this.onHelp,
-    required this.soundMuted,
-    required this.onToggleSound,
-  });
-
-  final MergeCampController controller;
-  final VoidCallback onRestart;
-  final VoidCallback onHelp;
-  final bool soundMuted;
-  final VoidCallback onToggleSound;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'MergeCamp',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                _MetricPill(label: 'Score', value: '${controller.score}'),
-                const SizedBox(width: 6),
-                _MetricPill(label: 'Moves', value: '${controller.placements}'),
+                // Taps must not reach the board before the seen-flag read
+                // decides whether the how-to-play card opens.
+                if (_tutorialLoading)
+                  const Positioned.fill(child: AbsorbPointer()),
+                if (_controller.isGameOver)
+                  Positioned.fill(
+                    child: ExcludeFocus(
+                      excluding: _albumOpen || _tutorialBlocking,
+                      child: RunSummaryOverlay(
+                        report:
+                            _report ??
+                            RunReport(
+                              score: _controller.score,
+                              highestTier: _controller.highestTier,
+                              bestChain: _controller.bestMergeChain,
+                              missionsCompleted: _missions.completedThisRun,
+                            ),
+                        theme: _theme,
+                        busy: _breakAdInProgress,
+                        animateArt: loopingArt,
+                        playAgainFocus: _playAgainFocus,
+                        onPlayAgain: () => unawaited(_restartRun()),
+                        onAlbum: _openAlbum,
+                      ),
+                    ),
+                  ),
+                if (_albumOpen)
+                  Positioned.fill(
+                    child: ExcludeFocus(
+                      excluding: _tutorialBlocking,
+                      child: AlbumOverlay(
+                        progress: _progress,
+                        animateArt: loopingArt,
+                        onSelectTheme: _selectTheme,
+                        onClose: _closeAlbum,
+                      ),
+                    ),
+                  ),
+                if (_showHowTo)
+                  Positioned.fill(
+                    child: HowToPlayOverlay(
+                      steps: _howToPlaySteps,
+                      theme: _theme,
+                      onClose: _closeHowToPlay,
+                    ),
+                  ),
               ],
             ),
           ),
         ),
-        IconButton(
-          onPressed: onHelp,
-          tooltip: 'How to play',
-          icon: const Icon(Icons.help_outline),
-        ),
-        IconButton(
-          onPressed: onToggleSound,
-          tooltip: soundMuted ? 'Sound off' : 'Sound on',
-          icon: Icon(
-            soundMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-          ),
-        ),
-        IconButton(
-          onPressed: onRestart,
-          tooltip: 'Restart run',
-          icon: const Icon(Icons.refresh),
-        ),
-      ],
-    );
-  }
-}
-
-class _MetricPill extends StatelessWidget {
-  const _MetricPill({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B2B22),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10, color: Color(0xFFA6BBA8)),
-          ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-          ),
-        ],
       ),
     );
   }
 }
 
-class _ToolBar extends StatelessWidget {
-  const _ToolBar({
-    required this.controller,
-    required this.trailAxeMode,
-    required this.onToggleTrailAxe,
-  });
-
-  final MergeCampController controller;
-  final bool trailAxeMode;
-  final VoidCallback? onToggleTrailAxe;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _PreviewStrip(tiers: controller.previewTiers)),
-        const SizedBox(width: 10),
-        Tooltip(
-          message: 'Trail Axe clears one occupied tile',
-          child: IconButton.filledTonal(
-            onPressed: onToggleTrailAxe,
-            isSelected: trailAxeMode,
-            icon: Badge.count(
-              count: controller.trailAxes,
-              isLabelVisible: controller.trailAxes > 0,
-              child: const Icon(Icons.hardware),
-            ),
-            selectedIcon: Badge.count(
-              count: controller.trailAxes,
-              child: const Icon(Icons.hardware),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PreviewStrip extends StatelessWidget {
-  const _PreviewStrip({required this.tiers});
-
-  final List<int> tiers;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2D23),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF42624C)),
-      ),
-      child: Row(
-        children: [
-          const Text(
-            'Next',
-            style: TextStyle(
-              color: Color(0xFFC7DCC9),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 10),
-          for (final tier in tiers) ...[
-            _MiniCampTile(tier: tier),
-            const SizedBox(width: 6),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniCampTile extends StatelessWidget {
-  const _MiniCampTile({required this.tier});
-
-  final int tier;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 42,
-      height: 38,
-      decoration: BoxDecoration(
-        color: _tileColor(tier),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Center(
-        child: Text(
-          'T$tier',
-          style: const TextStyle(
-            color: Colors.black87,
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CampTile extends StatelessWidget {
-  const _CampTile({
-    required this.tier,
-    required this.trailAxeMode,
-    required this.onTap,
-    this.highlighted = false,
-  });
-
-  final int? tier;
-  final bool trailAxeMode;
-  final bool highlighted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tileTier = tier;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          key: highlighted ? const ValueKey('keyboard-cursor') : null,
-          duration: const Duration(milliseconds: 160),
-          decoration: BoxDecoration(
-            color: tileTier == null
-                ? const Color(0xFF243329)
-                : _tileColor(tileTier),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: highlighted
-                  ? Colors.white
-                  : trailAxeMode && tileTier != null
-                  ? const Color(0xFFFFD166)
-                  : const Color(0xFF92DE7D),
-              width: highlighted ? 4 : (tileTier == null ? 1 : 2),
-            ),
-          ),
-          child: Center(
-            child: tileTier == null
-                ? Icon(
-                    trailAxeMode ? Icons.block : Icons.add,
-                    color: const Color(0xFF7B9381),
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'T$tileTier',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Icon(
-                        _tileIcon(tileTier),
-                        color: Colors.black87,
-                        size: 22,
-                      ),
-                      const SizedBox(height: 3),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            MergeCampController.campTierName(tileTier),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-Color _tileColor(int tier) {
-  const palette = [
-    Color(0xFFB4E197),
-    Color(0xFFFFC857),
-    Color(0xFF7DCF7B),
-    Color(0xFF4EA8DE),
-    Color(0xFFF29E4C),
-    Color(0xFFA275D1),
-    Color(0xFFF06AA0),
-    Color(0xFF6ED6D1),
-  ];
-  return palette[(tier - 1).clamp(0, palette.length - 1)];
-}
-
-IconData _tileIcon(int tier) {
-  const icons = [
-    Icons.terrain,
-    Icons.local_fire_department,
-    Icons.inventory_2,
-    Icons.cabin,
-    Icons.cell_tower,
-    Icons.holiday_village,
-    Icons.flag,
-    Icons.workspace_premium,
-  ];
-  return icons[(tier - 1).clamp(0, icons.length - 1)];
-}
+/// The three how-to-play steps (English ASCII; see the tutorial spec).
+const List<HowToPlayStep> _howToPlaySteps = [
+  HowToPlayStep(
+    icon: Icons.grid_view_rounded,
+    tiers: [1, 1, 1, 2],
+    text:
+        'Match 3 or more touching camp tiles to merge them into a bigger '
+        'camp. Merges can chain! Keep the 4x4 board from jamming.',
+  ),
+  HowToPlayStep(
+    icon: Icons.touch_app_rounded,
+    tiers: [3, 4],
+    text:
+        'Tap an empty plot to place the next piece. Keyboard: arrows/WASD '
+        'move, Enter/Space place.',
+  ),
+  HowToPlayStep(
+    icon: Icons.emoji_events_rounded,
+    text:
+        'Missions give a Trail Axe (X clears one tile) and camp XP. '
+        'Level up to unlock new camp themes.',
+  ),
+];

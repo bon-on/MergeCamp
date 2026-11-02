@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../art/camp_palette.dart';
+import '../art/camp_tile_art.dart';
+import '../meta/camp_theme.dart';
+
 /// Remembers whether the first-run "How to play" card has been dismissed.
 ///
 /// Storage failures never break play: a read failure reports "not seen" (the
@@ -31,10 +35,14 @@ class HowToPlayStore {
 }
 
 class HowToPlayStep {
-  const HowToPlayStep({required this.icon, required this.text});
+  const HowToPlayStep({required this.icon, required this.text, this.tiers});
 
   final IconData icon;
   final String text;
+
+  /// Optional camp tiers drawn as a small illustration instead of [icon]
+  /// (the last one is shown as the merge result).
+  final List<int>? tiers;
 }
 
 /// Full-screen scrim plus a "How to play" card. Swallows every key event and
@@ -44,9 +52,13 @@ class HowToPlayOverlay extends StatefulWidget {
     super.key,
     required this.steps,
     required this.onClose,
+    this.theme = CampTheme.summer,
   });
 
   final List<HowToPlayStep> steps;
+
+  /// Camp theme for the card colors.
+  final CampTheme theme;
 
   /// Called when the player presses Skip, Play or Escape.
   final VoidCallback onClose;
@@ -126,9 +138,61 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
     return KeyEventResult.handled;
   }
 
+  Widget _illustration(HowToPlayStep step, CampPalette palette) {
+    final tiers = step.tiers;
+    if (tiers == null || tiers.isEmpty) {
+      return Center(
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: palette.accent,
+            border: Border.all(color: Colors.white, width: 3),
+          ),
+          child: Icon(step.icon, size: 34, color: palette.onAccent),
+        ),
+      );
+    }
+    final inputs = tiers.length > 1
+        ? tiers.sublist(0, tiers.length - 1)
+        : tiers;
+    return SizedBox(
+      height: 64,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          for (final tier in inputs) ...<Widget>[
+            SizedBox.square(
+              dimension: 46,
+              child: CampTileArt(
+                tier: tier,
+                theme: widget.theme,
+                animate: false,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          if (tiers.length > 1) ...<Widget>[
+            Icon(Icons.arrow_forward_rounded, color: palette.textSecondary),
+            const SizedBox(width: 4),
+            SizedBox.square(
+              dimension: 62,
+              child: CampTileArt(
+                tier: tiers.last,
+                theme: widget.theme,
+                animate: false,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final palette = CampPalette.of(widget.theme);
     final step = widget.steps[_index];
     return Focus(
       focusNode: _focusNode,
@@ -136,19 +200,23 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
       onKeyEvent: _onKeyEvent,
       child: Stack(
         children: <Widget>[
-          const ModalBarrier(dismissible: false, color: Color(0xB3000000)),
+          const ModalBarrier(dismissible: false, color: Color(0x99101A14)),
           SafeArea(
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
+                  constraints: const BoxConstraints(maxWidth: 380),
                   child: Material(
-                    color: theme.colorScheme.surfaceContainerHigh,
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(20),
+                    color: palette.panel,
+                    elevation: 10,
+                    shadowColor: const Color(0x66000000),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26),
+                      side: BorderSide(color: palette.panelBorder, width: 1.5),
+                    ),
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -156,59 +224,77 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                           Text(
                             'How to play',
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
+                            style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: theme.colorScheme.primaryContainer,
-                            child: Icon(
-                              step.icon,
-                              size: 30,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
+                          _illustration(step, palette),
+                          const SizedBox(height: 16),
                           Text(
                             step.text,
                             key: const ValueKey('how-to-play-text'),
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                            style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 15,
                               height: 1.4,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               for (var i = 0; i < widget.steps.length; i++)
-                                Container(
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 3,
                                   ),
-                                  width: 8,
+                                  width: i == _index ? 20 : 8,
                                   height: 8,
                                   decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
+                                    borderRadius: BorderRadius.circular(4),
                                     color: i == _index
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.outlineVariant,
+                                        ? palette.accent
+                                        : palette.textSecondary.withValues(
+                                            alpha: 0.3,
+                                          ),
                                   ),
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Row(
                             children: <Widget>[
                               TextButton(
                                 onPressed: widget.onClose,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: palette.textSecondary,
+                                  textStyle: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                                 child: const Text('Skip'),
                               ),
                               const Spacer(),
                               FilledButton(
                                 onPressed: _next,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: palette.accent,
+                                  foregroundColor: palette.onAccent,
+                                  minimumSize: const Size(110, 46),
+                                  textStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
                                 child: Text(_isLast ? 'Play' : 'Next'),
                               ),
                             ],

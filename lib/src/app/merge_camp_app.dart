@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../game/how_to_play.dart';
 import '../game/merge_camp_screen.dart';
+import '../meta/camp_progress_store.dart';
 import '../platform/game_platform.dart';
 
 class MergeCampApp extends StatelessWidget {
@@ -10,11 +11,15 @@ class MergeCampApp extends StatelessWidget {
     this.enableAds = false,
     this.platform = const NoopGamePlatform(),
     this.howToPlayStore = const HowToPlayStore(),
+    this.progressStore = const CampProgressStore(),
   });
 
   final bool enableAds;
   final GamePlatform platform;
   final HowToPlayStore howToPlayStore;
+
+  /// Best score, camp album, XP and theme (tests inject a memory store).
+  final CampProgressStore progressStore;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +30,7 @@ class MergeCampApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF12211A),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7DCB6B),
+          seedColor: const Color(0xFFFFB546),
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
@@ -34,6 +39,7 @@ class MergeCampApp extends StatelessWidget {
         enableAds: enableAds,
         platform: platform,
         howToPlayStore: howToPlayStore,
+        progressStore: progressStore,
       ),
     );
   }
