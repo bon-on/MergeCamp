@@ -73,3 +73,7 @@ CrazyGames가 MergeCamp를 "The overall quality of the game does not yet meet th
 - `flutter build web --release --base-href /MergeCamp/`, `tool/build_crazygames.sh`, `tool/build_gamepix.sh`
 - 브라우저에서 1280x720, 390x844 화면 확인
 - `node <harness-lab>/dist/index.js audit . --format md`
+
+## Superseded by feature-first-run-resume
+- Participation XP now also requires one merge in the run (restart farming without merges earns none).
+- A mission completed by the run's final placement pays its 150 point fallback before the result is recorded; the run stays over.
