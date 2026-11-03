@@ -28,6 +28,8 @@ class CampHudLayout extends StatelessWidget {
     required this.progress,
     required this.missions,
     required this.cursor,
+    this.guidedIndex,
+    this.onSkipPractice,
     required this.trailAxeMode,
     required this.soundMuted,
     required this.loopingArt,
@@ -54,6 +56,8 @@ class CampHudLayout extends StatelessWidget {
   final CampProgress progress;
   final MissionBoard missions;
   final int? cursor;
+  final int? guidedIndex;
+  final VoidCallback? onSkipPractice;
   final bool trailAxeMode;
   final bool soundMuted;
   final bool loopingArt;
@@ -101,11 +105,51 @@ class CampHudLayout extends StatelessWidget {
       axeMode: trailAxeMode,
       animateArt: loopingArt,
       nextTier: controller.nextTier,
+      previewPlacement: controller.previewPlacement,
+      guidedIndex: guidedIndex,
       danger: controller.occupiedCount >= dangerOccupied,
       pulseDanger: loopingArt,
       shakeSerial: shakeSerial,
       onCellTap: onCellTap,
       overlays: [
+        if (guidedIndex != null)
+          Positioned(
+            left: 4,
+            right: 4,
+            bottom: 4,
+            child: Material(
+              color: palette.panel,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                // Wraps on small boards (360x640, 640x480) instead of
+                // overflowing; it only ever covers the bottom row.
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  children: [
+                    Text(
+                      'Tap the glowing plot to merge!',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                      ),
+                      onPressed: onSkipPractice,
+                      child: const Text('Skip practice'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (chainLength >= 2)
           Positioned.fill(
             child: ChainBanner(

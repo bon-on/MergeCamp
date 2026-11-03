@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/meta/camp_progress_store.dart';
 import 'package:merge_camp/src/platform/game_platform.dart';
 
 class _FakeStore extends HowToPlayStore {
@@ -57,6 +58,8 @@ Future<MergeCampController> _pump(
         controller: controller,
         howToPlayStore: store,
         platform: platform,
+        // Input waits for stored progress; keep it in memory.
+        progressStore: MemoryCampProgressStore(),
       ),
     ),
   );
@@ -239,7 +242,8 @@ void main() {
     }
     await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(seconds: 1));
-    expect(_filled(controller), 0);
+    expect(_filled(controller), 2);
+    expect(controller.placements, 0);
   });
 
   testWidgets('board taps are ignored while the seen flag is loading', (

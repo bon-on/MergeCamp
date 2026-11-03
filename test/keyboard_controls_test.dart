@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/meta/camp_progress_store.dart';
 
 class _SeenStore extends HowToPlayStore {
   const _SeenStore();
@@ -48,6 +49,8 @@ Future<MergeCampController> _pump(
       home: MergeCampScreen(
         controller: controller,
         howToPlayStore: const _SeenStore(),
+        // Input waits for stored progress; keep it in memory.
+        progressStore: MemoryCampProgressStore(),
       ),
     ),
   );

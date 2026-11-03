@@ -157,10 +157,23 @@ class _MutePlatform extends GamePlatform {
       this.listener = listener;
 }
 
-int _tilesInGrid(WidgetTester tester) => find
-    .descendant(of: find.byType(GridView), matching: find.byType(CampTileArt))
-    .evaluate()
-    .length;
+/// Placed tiles only: the faint placement preview on the hovered or
+/// keyboard-selected plot is not a tile.
+int _tilesInGrid(WidgetTester tester) =>
+    find
+        .descendant(
+          of: find.byType(GridView),
+          matching: find.byType(CampTileArt),
+        )
+        .evaluate()
+        .length -
+    find
+        .descendant(
+          of: find.byKey(const ValueKey('placement-preview')),
+          matching: find.byType(CampTileArt),
+        )
+        .evaluate()
+        .length;
 
 Finder _cell(int index) => find
     .descendant(
@@ -343,21 +356,21 @@ void main() {
     expect(find.text('Camp jammed!'), findsOneWidget);
     expect(find.byKey(const ValueKey('summary-score')), findsOneWidget);
     // The last placement built a Supply Shed, which completes the "Build a
-    // Supply Shed" mission. After game over neither an axe nor bonus score
-    // is paid (the final score stays final); the mission XP still counts.
+    // Supply Shed" mission. Its terminal bonus is settled before the summary.
     expect(h.missions.completedThisRun, 1);
-    expect(h.controller.score, 500);
+    expect(h.controller.score, 650);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('summary-score'))).data,
-      '500',
+      '650',
     );
-    expect(find.text('Best 500'), findsWidgets);
+    expect(find.text('Best 650'), findsWidgets);
     expect(find.text('New best!'), findsOneWidget);
     expect(find.text('Supply Shed'), findsOneWidget);
-    expect(h.store.value.bestScore, 500);
-    // 500 / 10 + 30 mission XP + 20 participation.
-    expect(h.store.value.totalXp, 100);
-    expect(find.text('+100 XP'), findsOneWidget);
+    expect(h.store.value.bestScore, 650);
+    // 650 / 10 + 30 mission XP; no merges, so no participation bonus.
+    expect(h.store.value.totalXp, 95);
+    expect(find.text('+95 XP'), findsOneWidget);
+    expect(h.store.value.activeRun, isNull);
 
     // The board ignores input while the summary is open.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -369,7 +382,7 @@ void main() {
     expect(h.controller.isGameOver, isFalse);
     expect(h.controller.placements, 0);
     expect(find.text('Camp jammed!'), findsNothing);
-    expect(h.store.value.totalXp, 100, reason: 'the run is applied once');
+    expect(h.store.value.totalXp, 95, reason: 'the run is applied once');
   });
 
   testWidgets('Play again button and R both start a new run', (tester) async {
@@ -394,7 +407,7 @@ void main() {
     tester,
   ) async {
     final h = await _pump(tester);
-    // Five plain placements (no merges, no missions): participation only.
+    // Five plain placements without merges must not farm participation XP.
     final board = List<int?>.filled(16, null);
     h.controller.debugLoadBoard(
       board,
@@ -411,7 +424,7 @@ void main() {
     await tester.tap(find.byTooltip('Restart run'));
     await tester.pump();
     expect(h.controller.placements, 0);
-    expect(h.store.value.totalXp, CampProgress.participationXp);
+    expect(h.store.value.totalXp, 0);
     await tester.pump(const Duration(seconds: 3));
 
     // A one-move run (restart farming) and an empty run give no XP.
@@ -421,7 +434,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Restart run'));
     await tester.pump();
-    expect(h.store.value.totalXp, CampProgress.participationXp);
+    expect(h.store.value.totalXp, 0);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -623,7 +636,7 @@ void main() {
     expect(_tilesInGrid(tester), 1);
   });
 
-  testWidgets('progress made before the stored value loads is merged', (
+  testWidgets('input waits for stored progress before starting a run', (
     tester,
   ) async {
     final store = _LateStore(
@@ -635,26 +648,22 @@ void main() {
       ),
     );
     final h = await _pump(tester, store: store);
-    h.controller.debugLoadBoard(
-      List<int?>.filled(16, null),
-      nextTier: 1,
-      previewTiers: const [1, 2, 1, 2, 1],
-    );
-    for (final cell in const [0, 2, 8, 10, 15]) {
-      await tester.tap(_cell(cell));
-      await tester.pump();
-    }
-    await tester.tap(find.byTooltip('Restart run'));
+    await tester.tap(_cell(0), warnIfMissed: false);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
     await tester.pump();
-    expect(store.saveCount, 0, reason: 'nothing saved before the load');
-
+    expect(h.controller.placements, 0);
+    expect(store.saveCount, 0);
     store.gate.complete();
+    // One pump delivers the load, the next one rebuilds without the guard.
     await tester.pump();
     await tester.pump();
-    expect(store.saveCount, 1);
     expect(store.value.bestScore, 900);
-    expect(store.value.discoveredTiers, {1, 2, 3});
-    expect(store.value.totalXp, 400 + CampProgress.participationXp);
+    expect(store.value.totalXp, 400);
+    await tester.tap(_cell(0));
+    await tester.pump();
+    expect(h.controller.placements, 1);
+    expect(store.value.activeRun, isNotNull);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -688,6 +697,8 @@ void main() {
     Size(390, 844),
     Size(390, 796),
     Size(844, 390),
+    Size(360, 640),
+    Size(640, 480),
     Size(320, 640),
   ]) {
     testWidgets('layout fits $size without overflow', (tester) async {

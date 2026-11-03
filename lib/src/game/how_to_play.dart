@@ -53,6 +53,7 @@ class HowToPlayOverlay extends StatefulWidget {
     required this.steps,
     required this.onClose,
     this.theme = CampTheme.summer,
+    this.onPlay,
   });
 
   final List<HowToPlayStep> steps;
@@ -62,6 +63,9 @@ class HowToPlayOverlay extends StatefulWidget {
 
   /// Called when the player presses Skip, Play or Escape.
   final VoidCallback onClose;
+
+  /// Finishing the explanation may start the first-run practice.
+  final VoidCallback? onPlay;
 
   @override
   State<HowToPlayOverlay> createState() => _HowToPlayOverlayState();
@@ -91,7 +95,7 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
 
   void _next() {
     if (_isLast) {
-      widget.onClose();
+      (widget.onPlay ?? widget.onClose)();
     } else {
       setState(() => _index += 1);
     }

@@ -92,6 +92,16 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _tutorialLoading = true;
   bool _showHowTo = false;
   bool _albumOpen = false;
+  bool _firstRun = false;
+  // The first run still owes the fixed starter missions; survives closing
+  // the card before stored progress arrives.
+  bool _starterPending = false;
+  bool _starterPrepared = false;
+  bool _guidedPractice = false;
+  // Play was chosen on the first-run card before stored progress arrived.
+  bool _practiceRequested = false;
+  bool _restoringRun = false;
+  Future<void> _saveQueue = Future<void>.value();
 
   // Whether the platform currently believes gameplay is running.
   bool _gameplayActive = false;
@@ -123,7 +133,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   static const int _missionBonusScore = 150;
 
-  bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
+  /// Empty plot next to the two practice tents (see startGuidedRun).
+  static const int _guidedPlot = 2;
+
+  bool get _tutorialBlocking =>
+      _tutorialLoading || _showHowTo || !_progressLoaded;
   bool get _overlayOpen => _albumOpen || _controller.isGameOver;
   CampTheme get _theme => _progress.selectedTheme;
   bool get _effectsOn => !_reduceMotion;
@@ -191,9 +205,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         selectedTheme: _themeTouched
             ? _progress.selectedTheme
             : loaded.selectedTheme,
+        activeRun: loaded.activeRun,
       );
     });
+    if (!_progressChangedBeforeLoad) _restoreRun();
+    _prepareStarterMissions();
+    _startRequestedPractice();
     if (_progressChangedBeforeLoad) unawaited(_saveProgress());
+    _syncGameplay();
   }
 
   void _setProgress(CampProgress next, {int xpGained = 0}) {
@@ -207,10 +226,105 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (_progressLoaded) unawaited(_saveProgress());
   }
 
-  Future<void> _saveProgress() async {
+  Future<void> _saveProgress() {
+    final snapshot = _progress;
+    _saveQueue = _saveQueue.then((_) async {
+      try {
+        await widget.progressStore.save(snapshot);
+      } catch (_) {}
+    });
+    return _saveQueue;
+  }
+
+  void _checkpointRun() {
+    if (!_progressLoaded || _restoringRun || _controller.isGameOver) return;
+    _setProgress(
+      _progress.withActiveRun({
+        'version': 1,
+        'controller': _controller.toSnapshot(),
+        'missions': _missions.toSnapshot(),
+        'guidedPractice': _guidedPractice,
+      }),
+    );
+  }
+
+  void _restoreRun() {
+    final run = _progress.activeRun;
+    if (run == null) return;
+    final controller = MergeCampController();
+    final missions = MissionBoard();
     try {
-      await widget.progressStore.save(_progress);
-    } catch (_) {}
+      if (run['version'] != 1 ||
+          !controller.restoreSnapshot(run['controller']) ||
+          controller.isGameOver ||
+          !missions.restoreSnapshot(run['missions']) ||
+          run['guidedPractice'] is! bool) {
+        _setProgress(_progress.withActiveRun(null));
+        return;
+      }
+      final guided = run['guidedPractice'] == true;
+      if (guided &&
+          (controller.placements != 0 ||
+              controller.board[0] != 1 ||
+              controller.board[1] != 1 ||
+              controller.board[_guidedPlot] != null ||
+              controller.nextTier != 1)) {
+        _setProgress(_progress.withActiveRun(null));
+        return;
+      }
+      _restoringRun = true;
+      _controller.restoreSnapshot(run['controller']);
+      _missions.restoreSnapshot(run['missions']);
+      _seenPlacements = _controller.placements;
+      _wasGameOver = false;
+      _wasDanger = _controller.occupiedCount >= dangerOccupied;
+      _guidedPractice = guided;
+      _cursor = guided ? _guidedPlot : null;
+      _starterPrepared = true;
+      _firstRun = false;
+      _starterPending = false;
+      _practiceRequested = false;
+    } finally {
+      _restoringRun = false;
+      controller.dispose();
+    }
+  }
+
+  /// Starts the guided first merge once Play was chosen on the first-run
+  /// card and the stored progress has loaded (a restored run wins).
+  void _startRequestedPractice() {
+    if (!_practiceRequested || !_progressLoaded) return;
+    _practiceRequested = false;
+    if (_controller.placements != 0 || _controller.isGameOver) return;
+    _guidedPractice = true;
+    _trailAxeMode = false;
+    _cursor = _guidedPlot;
+    // Notifies _onChanged, which saves the practice board and rebuilds.
+    _controller.startGuidedRun();
+  }
+
+  void _prepareStarterMissions() {
+    if (!_progressLoaded ||
+        _tutorialLoading ||
+        !_starterPending ||
+        _starterPrepared ||
+        _controller.placements > 0) {
+      return;
+    }
+    _missions.startStarterSet();
+    _starterPrepared = true;
+    _starterPending = false;
+    // Saved at once so a reload before the first move keeps the set.
+    _checkpointRun();
+  }
+
+  void _skipPractice() {
+    if (!_guidedPractice) return;
+    _guidedPractice = false;
+    _cursor = null;
+    // Notifies _onChanged, which saves the empty board and rebuilds.
+    _controller.restart();
+    _focusNode.requestFocus();
   }
 
   void _toggleSound() {
@@ -251,7 +365,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     setState(() {
       _tutorialLoading = false;
       _showHowTo = !seen;
+      _firstRun = !seen && !_starterPrepared;
+      _starterPending = _firstRun;
     });
+    _prepareStarterMissions();
     _syncGameplay();
   }
 
@@ -260,8 +377,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _syncGameplay();
   }
 
-  void _closeHowToPlay() {
-    setState(() => _showHowTo = false);
+  void _closeHowToPlay({bool practice = false}) {
+    setState(() {
+      _showHowTo = false;
+      _practiceRequested = practice && _firstRun;
+      _firstRun = false;
+    });
+    _startRequestedPractice();
+    _checkpointRun();
     _syncGameplay();
     _refocus();
     unawaited(_markTutorialSeen());
@@ -326,14 +449,17 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   void _onChanged() {
     // Mission rewards notify again from inside this handler; the outer call
     // already handles the new state.
-    if (_handlingChange) return;
+    if (_handlingChange || _restoringRun) return;
     _handlingChange = true;
     try {
       final placed =
           _controller.placements != _seenPlacements &&
           _controller.lastPlacedIndex != null;
       _seenPlacements = _controller.placements;
-      if (placed) _afterPlacement();
+      if (placed) {
+        _guidedPractice = false;
+        _afterPlacement();
+      }
 
       final danger = _controller.occupiedCount >= dangerOccupied;
       if (danger && !_wasDanger && placed && _effectsOn) _shakeSerial += 1;
@@ -358,6 +484,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           _handleRunEndedAds();
         }
       }
+      if (!_controller.isGameOver) _checkpointRun();
     } finally {
       _handlingChange = false;
     }
@@ -383,7 +510,13 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
     for (final mission in _missions.update(_controller)) {
       final axe = _controller.grantTrailAxe();
-      if (!axe) _controller.addBonusScore(_missionBonusScore);
+      if (!axe) {
+        if (_controller.isGameOver) {
+          _controller.addFinalMissionBonus(_missionBonusScore);
+        } else {
+          _controller.addBonusScore(_missionBonusScore);
+        }
+      }
       unawaited(_feedback.mission());
       _toast(
         'Mission complete: ${mission.label} '
@@ -434,6 +567,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         bestChain: _controller.bestMergeChain,
         placements: _controller.placements,
         missionXp: _missions.xpEarned,
+        mergeCount: _controller.mergeCount,
       ),
     );
     _setProgress(outcome.progress, xpGained: outcome.xpGained);
@@ -478,7 +612,13 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   Future<void> _restartRun() async {
-    if (_breakAdInProgress) {
+    if (_breakAdInProgress || _tutorialBlocking) {
+      return;
+    }
+    // Restarting the untouched practice board just skips the practice and
+    // keeps the starter missions.
+    if (_guidedPractice && _controller.placements == 0) {
+      _skipPractice();
       return;
     }
     final afterGameOver = _controller.isGameOver;
@@ -510,6 +650,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       }
     }
     _trailAxeMode = false;
+    _guidedPractice = false;
     _report = null;
     _runApplied = false;
     _missions.reset();
@@ -628,6 +769,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       }
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.escape && _guidedPractice) {
+      if (!isRepeat) _skipPractice();
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.escape && _trailAxeMode) {
       setState(() => _trailAxeMode = false);
       return KeyEventResult.handled;
@@ -645,6 +790,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
     if (fromPointer && _cursor != null) {
       setState(() => _cursor = null);
+    }
+    // Practice accepts only the highlighted plot, and no axe.
+    if (_guidedPractice &&
+        (index != _guidedPlot || forceAxe || _trailAxeMode)) {
+      return;
     }
     _handlingTap = true;
     try {
@@ -684,6 +834,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   void _toggleTrailAxe() {
+    if (_guidedPractice) return;
     setState(() => _trailAxeMode = !_trailAxeMode);
     _focusNode.requestFocus();
   }
@@ -724,6 +875,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             progress: _progress,
                             missions: _missions,
                             cursor: _cursor,
+                            guidedIndex: _guidedPractice ? _guidedPlot : null,
+                            onSkipPractice: _skipPractice,
                             trailAxeMode: _trailAxeMode,
                             soundMuted: _soundMuted,
                             loopingArt: loopingArt,
@@ -759,7 +912,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                 ),
                 // Taps must not reach the board before the seen-flag read
                 // decides whether the how-to-play card opens.
-                if (_tutorialLoading)
+                if (_tutorialLoading || !_progressLoaded)
                   const Positioned.fill(child: AbsorbPointer()),
                 if (_controller.isGameOver)
                   Positioned.fill(
@@ -801,6 +954,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                       steps: _howToPlaySteps,
                       theme: _theme,
                       onClose: _closeHowToPlay,
+                      onPlay: () => _closeHowToPlay(practice: true),
                     ),
                   ),
               ],

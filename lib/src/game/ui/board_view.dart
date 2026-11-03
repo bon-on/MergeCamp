@@ -7,10 +7,11 @@ import '../../art/camp_tile_art.dart';
 import '../../art/empty_plot_art.dart';
 import '../../meta/camp_theme.dart';
 import 'board_fx.dart';
+import '../merge_camp_controller.dart';
 
 /// The 4x4 camp board: a clearing backdrop, one tappable cell per plot, the
 /// effect layer on top and the danger glow around it.
-class BoardView extends StatelessWidget {
+class BoardView extends StatefulWidget {
   const BoardView({
     super.key,
     required this.board,
@@ -19,6 +20,8 @@ class BoardView extends StatelessWidget {
     required this.onCellTap,
     required this.nextTier,
     this.cursor,
+    this.guidedIndex,
+    this.previewPlacement,
     this.axeMode = false,
     this.animateArt = true,
     this.danger = false,
@@ -35,6 +38,8 @@ class BoardView extends StatelessWidget {
   /// Tier shown as a faint preview on a hovered empty plot.
   final int nextTier;
   final int? cursor;
+  final int? guidedIndex;
+  final List<MergeStep> Function(int)? previewPlacement;
   final bool axeMode;
   final bool animateArt;
 
@@ -49,7 +54,32 @@ class BoardView extends StatelessWidget {
   final List<Widget> overlays;
 
   @override
+  State<BoardView> createState() => _BoardViewState();
+}
+
+class _BoardViewState extends State<BoardView> {
+  int? _hovered;
+
+  @override
   Widget build(BuildContext context) {
+    final board = widget.board;
+    final theme = widget.theme;
+    final fx = widget.fx;
+    final cursor = widget.cursor;
+    final axeMode = widget.axeMode;
+    final animateArt = widget.animateArt;
+    final nextTier = widget.nextTier;
+    final danger = widget.danger;
+    final pulseDanger = widget.pulseDanger;
+    final shakeSerial = widget.shakeSerial;
+    final overlays = widget.overlays;
+    final onCellTap = widget.onCellTap;
+    final target = widget.guidedIndex ?? _hovered ?? cursor;
+    final steps = target == null || axeMode
+        ? const <MergeStep>[]
+        : widget.previewPlacement?.call(target) ?? const <MergeStep>[];
+    final merging = {for (final step in steps) ...step.absorbed};
+    final resultTier = steps.isEmpty ? nextTier : steps.last.toTier;
     final palette = CampPalette.of(theme);
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -109,7 +139,18 @@ class BoardView extends StatelessWidget {
                     highlighted: cursor == index,
                     axeMode: axeMode,
                     animate: animateArt,
-                    nextTier: nextTier,
+                    nextTier: index == target ? resultTier : nextTier,
+                    previewOrigin: index == target && !axeMode,
+                    previewMerge: merging.contains(index),
+                    guided: widget.guidedIndex == index,
+                    previewChain: index == target ? steps.length : 0,
+                    onHover: (hover) => setState(() {
+                      if (hover) {
+                        _hovered = index;
+                      } else if (_hovered == index) {
+                        _hovered = null;
+                      }
+                    }),
                     onTap: () => onCellTap(index),
                   ),
                 ),
@@ -160,6 +201,11 @@ class _BoardCell extends StatefulWidget {
     required this.animate,
     required this.nextTier,
     required this.onTap,
+    required this.onHover,
+    this.previewOrigin = false,
+    this.previewMerge = false,
+    this.guided = false,
+    this.previewChain = 0,
   });
 
   /// Tier to draw, null for an empty (or momentarily covered) plot.
@@ -174,6 +220,11 @@ class _BoardCell extends StatefulWidget {
   final bool animate;
   final int nextTier;
   final VoidCallback onTap;
+  final ValueChanged<bool> onHover;
+  final bool previewOrigin;
+  final bool previewMerge;
+  final bool guided;
+  final int previewChain;
 
   @override
   State<_BoardCell> createState() => _BoardCellState();
@@ -188,8 +239,14 @@ class _BoardCellState extends State<_BoardCell> {
     final palette = widget.palette;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
+      onEnter: (_) {
+        setState(() => _hover = true);
+        widget.onHover(true);
+      },
+      onExit: (_) {
+        setState(() => _hover = false);
+        widget.onHover(false);
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
@@ -219,12 +276,14 @@ class _BoardCellState extends State<_BoardCell> {
                       animate: widget.animate,
                     ),
                   ),
-                // Preview of the next tile on a hovered empty plot.
+                // Preview of the next tile (or its merge result) on the
+                // hovered or keyboard-selected empty plot.
                 if (tier == null &&
                     !widget.occupied &&
-                    _hover &&
+                    widget.previewOrigin &&
                     !widget.axeMode)
                   IgnorePointer(
+                    key: const ValueKey('placement-preview'),
                     child: Padding(
                       padding: EdgeInsets.all(s * 0.1),
                       child: Opacity(
@@ -235,6 +294,47 @@ class _BoardCellState extends State<_BoardCell> {
                           animate: false,
                           showBadge: false,
                         ),
+                      ),
+                    ),
+                  ),
+                if (widget.previewMerge ||
+                    widget.guided ||
+                    (widget.previewOrigin && widget.previewChain > 0))
+                  IgnorePointer(
+                    child: Semantics(
+                      label: widget.guided
+                          ? 'Place here to merge tents'
+                          : widget.previewMerge
+                          ? 'Will merge'
+                          : 'Merge result tier ${widget.nextTier}, chain ${widget.previewChain}',
+                      child: DecoratedBox(
+                        key: ValueKey(
+                          widget.guided ? 'guided-plot' : 'merge-preview',
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: radius,
+                          border: Border.all(color: palette.accent, width: 3),
+                          color: palette.accent.withValues(alpha: 0.12),
+                        ),
+                        child: widget.previewOrigin && widget.previewChain > 0
+                            ? Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Container(
+                                  color: palette.panel,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
+                                  child: Text(
+                                    'T${widget.nextTier} / x${widget.previewChain}',
+                                    style: TextStyle(
+                                      color: palette.textPrimary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                   ),
