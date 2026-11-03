@@ -107,6 +107,11 @@ class MergeCampController extends ChangeNotifier {
   }
 
   void restart() {
+    _resetRun();
+    notifyListeners();
+  }
+
+  void _resetRun() {
     _board = List<int?>.filled(cellCount, null);
     _score = 0;
     _highestTier = 1;
@@ -122,7 +127,119 @@ class MergeCampController extends ChangeNotifier {
     _previewTiers
       ..clear()
       ..addAll(List<int>.generate(previewCount, (_) => _rollNextTier()));
+  }
+
+  /// The first merge exercise is a real run: the two starter tents do not
+  /// count as player placements or earn points on their own.
+  void startGuidedRun() {
+    _resetRun();
+    _board[0] = 1;
+    _board[1] = 1;
+    _previewTiers[0] = 1;
     notifyListeners();
+  }
+
+  /// Predicts a placement without consuming a piece, a random draw or input.
+  List<MergeStep> previewPlacement(int index) {
+    if (_isGameOver ||
+        index < 0 ||
+        index >= cellCount ||
+        _board[index] != null) {
+      return const <MergeStep>[];
+    }
+    final simulated = List<int?>.of(_board)..[index] = nextTier;
+    return List.unmodifiable(_resolveMergeSteps(simulated, index));
+  }
+
+  /// Only persistent rule state is saved; transient animation events are not.
+  Map<String, dynamic> toSnapshot() => {
+    'version': 1,
+    'board': List<int?>.of(_board),
+    'previewTiers': List<int>.of(_previewTiers),
+    'score': _score,
+    'highestTier': _highestTier,
+    'placements': _placements,
+    'trailAxes': _trailAxes,
+    'lastAwardedAxeAt': _lastAwardedAxeAt,
+    'lastMergeChain': _lastMergeChain,
+    'bestMergeChain': _bestMergeChain,
+    'mergeCount': _mergeCount,
+    'isGameOver': _isGameOver,
+  };
+
+  /// Rejects malformed snapshots before touching state or notifying listeners.
+  /// Future, unseen pieces may differ after restoring; the three visible
+  /// pieces and all pressure/tool counters are preserved exactly.
+  bool restoreSnapshot(Object? data) {
+    if (data is! Map || data['version'] != 1) return false;
+    bool integer(Object? value, int minValue, int maxValue) =>
+        value is int && value >= minValue && value <= maxValue;
+    final board = data['board'];
+    final preview = data['previewTiers'];
+    if (board is! List ||
+        board.length != cellCount ||
+        preview is! List ||
+        preview.length != previewCount ||
+        !integer(data['score'], 0, 9007199254740991) ||
+        !integer(data['highestTier'], 1, 32) ||
+        !integer(data['placements'], 0, 1000000) ||
+        !integer(data['trailAxes'], 0, maxTrailAxes) ||
+        !integer(data['lastAwardedAxeAt'], 0, 1000000) ||
+        !integer(data['lastMergeChain'], 0, 7) ||
+        !integer(data['bestMergeChain'], 0, 7) ||
+        !integer(data['mergeCount'], 0, 7000000) ||
+        data['isGameOver'] is! bool) {
+      return false;
+    }
+    final highest = data['highestTier'] as int;
+    final placements = data['placements'] as int;
+    final awardedAt = data['lastAwardedAxeAt'] as int;
+    final merges = data['mergeCount'] as int;
+    final bestChain = data['bestMergeChain'] as int;
+    final cap = min(5, 2 + placements ~/ 8);
+    if (board.any((tier) => tier != null && !integer(tier, 1, highest)) ||
+        preview.any((tier) => !integer(tier, 1, cap)) ||
+        awardedAt > placements ||
+        awardedAt % 10 != 0 ||
+        merges > placements * 7 ||
+        bestChain > merges ||
+        (data['lastMergeChain'] as int) > bestChain) {
+      return false;
+    }
+    final occupied = board.where((tier) => tier != null).length;
+    final terminal = occupied == cellCount && data['trailAxes'] == 0;
+    if (terminal != data['isGameOver'] || occupied > placements + 2) {
+      return false;
+    }
+    if (placements == 0) {
+      final emptyStart = occupied == 0;
+      final guidedStart =
+          occupied == 2 && board[0] == 1 && board[1] == 1 && preview[0] == 1;
+      if ((!emptyStart && !guidedStart) ||
+          data['score'] != 0 ||
+          highest != 1 ||
+          data['trailAxes'] != 1) {
+        return false;
+      }
+    }
+
+    _board = List<int?>.from(board);
+    _previewTiers
+      ..clear()
+      ..addAll(List<int>.from(preview));
+    _score = data['score'] as int;
+    _highestTier = highest;
+    _placements = placements;
+    _trailAxes = data['trailAxes'] as int;
+    _lastAwardedAxeAt = awardedAt;
+    _lastMergeChain = data['lastMergeChain'] as int;
+    _bestMergeChain = bestChain;
+    _mergeCount = merges;
+    _isGameOver = terminal;
+    _lastPlacedIndex = null;
+    _lastMergeSteps = const <MergeStep>[];
+    notifyListeners();
+    return true;
   }
 
   MergeResult place(int index) {
@@ -140,8 +257,12 @@ class MergeCampController extends ChangeNotifier {
     _board[index] = placedTier;
     _placements += 1;
     _highestTier = max(_highestTier, placedTier);
-    final steps = <MergeStep>[];
-    final mergeCount = _resolveMerges(index, steps);
+    final steps = _resolveMergeSteps(_board, index);
+    for (final step in steps) {
+      _score += step.points;
+      _highestTier = max(_highestTier, step.toTier);
+    }
+    final mergeCount = steps.length;
     _lastMergeSteps = List.unmodifiable(steps);
     _mergeCount += mergeCount;
     _lastMergeChain = mergeCount;
@@ -179,6 +300,14 @@ class MergeCampController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Settles a mission completed by the terminal placement before the screen
+  /// captures the result. It does not resurrect the run or grant a tool.
+  void addFinalMissionBonus(int points) {
+    if (!_isGameOver || points <= 0) return;
+    _score += points;
+    notifyListeners();
+  }
+
   MergeResult useTrailAxe(int index) {
     if (_isGameOver) {
       return const MergeResult(MergeAction.gameOver);
@@ -197,16 +326,17 @@ class MergeCampController extends ChangeNotifier {
     return const MergeResult(MergeAction.removed);
   }
 
-  int _resolveMerges(int origin, List<MergeStep> steps) {
+  List<MergeStep> _resolveMergeSteps(List<int?> board, int origin) {
+    final steps = <MergeStep>[];
     var mergeCount = 0;
     var current = origin;
 
     while (true) {
-      final tier = _board[current];
+      final tier = board[current];
       if (tier == null) {
         break;
       }
-      final cluster = _connectedCluster(current, tier);
+      final cluster = _connectedCluster(board, current, tier);
       if (cluster.length < 3) {
         break;
       }
@@ -214,15 +344,13 @@ class MergeCampController extends ChangeNotifier {
       mergeCount += 1;
       for (final index in cluster) {
         if (index != current) {
-          _board[index] = null;
+          board[index] = null;
         }
       }
 
       final upgraded = tier + 1;
-      _board[current] = upgraded;
-      _highestTier = max(_highestTier, upgraded);
+      board[current] = upgraded;
       final points = cluster.length * 12 * upgraded * mergeCount;
-      _score += points;
       steps.add(
         MergeStep(
           origin: current,
@@ -235,10 +363,10 @@ class MergeCampController extends ChangeNotifier {
       );
     }
 
-    return mergeCount;
+    return steps;
   }
 
-  Set<int> _connectedCluster(int start, int tier) {
+  Set<int> _connectedCluster(List<int?> board, int start, int tier) {
     final visited = <int>{};
     final stack = <int>[start];
 
@@ -249,7 +377,7 @@ class MergeCampController extends ChangeNotifier {
       }
 
       for (final neighbor in _neighbors(index)) {
-        if (_board[neighbor] == tier && !visited.contains(neighbor)) {
+        if (board[neighbor] == tier && !visited.contains(neighbor)) {
           stack.add(neighbor);
         }
       }
