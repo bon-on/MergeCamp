@@ -8,12 +8,14 @@ class RunSummary {
     required this.bestChain,
     required this.placements,
     this.missionXp = 0,
+    this.mergeCount = 0,
   });
 
   final int score;
   final int highestTier;
   final int bestChain;
   final int placements;
+  final int mergeCount;
 
   /// XP already earned from completed missions during the run.
   final int missionXp;
@@ -49,8 +51,8 @@ class RunOutcome {
 ///   greedy             mean 3408  (p10 1728, p50 3240, p90 5256)
 /// With mission rewards (an axe per mission) players finish 3 to 5 missions
 /// per run. XP per run = score / 10 + missionXp + 20 (participation, only for
-/// runs with at least [participationMinPlacements] placements so quick
-/// restarts cannot farm it); mean
+/// runs with at least [participationMinPlacements] placements and one merge);
+/// the following tuning measurements predate that merge requirement. Mean
 /// XP per run measured 230 (random), 400 (casual), 510 (greedy), so an average
 /// player earns roughly 300. Even a 30 point run moves the bar by about 10%.
 /// Level curve: reaching level L+1 costs 230 + 55 * (L - 1) XP. Measured runs
@@ -62,19 +64,21 @@ class CampProgress {
     required this.discoveredTiers,
     required this.totalXp,
     required this.selectedTheme,
+    this.activeRun,
   });
 
   const CampProgress.initial()
     : bestScore = 0,
       discoveredTiers = const <int>{1},
       totalXp = 0,
+      activeRun = null,
       selectedTheme = CampTheme.summer;
 
   /// Highest camp tier that has an album entry.
   static const int maxAlbumTier = 8;
 
-  /// XP granted just for finishing a run with at least
-  /// [participationMinPlacements] placements.
+  /// XP granted for a run with at least [participationMinPlacements]
+  /// placements and one merge.
   static const int participationXp = 20;
 
   /// Placements a run needs before it earns [participationXp].
@@ -84,6 +88,17 @@ class CampProgress {
   final Set<int> discoveredTiers;
   final int totalXp;
   final CampTheme selectedTheme;
+
+  /// Optional live run envelope, validated by the screen before restoration.
+  final Map<String, dynamic>? activeRun;
+
+  CampProgress withActiveRun(Map<String, dynamic>? run) => CampProgress(
+    bestScore: bestScore,
+    discoveredTiers: Set.unmodifiable(discoveredTiers),
+    totalXp: totalXp,
+    selectedTheme: selectedTheme,
+    activeRun: run == null ? null : Map.unmodifiable(run),
+  );
 
   /// XP needed to go from [level] to the next one.
   static int xpToAdvance(int level) => 230 + 55 * (level < 1 ? 0 : level - 1);
@@ -123,7 +138,7 @@ class CampProgress {
     final levelBefore = level;
     if (summary.placements <= 0) {
       return RunOutcome(
-        progress: this,
+        progress: withActiveRun(null),
         xpGained: 0,
         isNewBest: false,
         previousBest: bestScore,
@@ -135,11 +150,12 @@ class CampProgress {
     final xp =
         xpForScore(summary.score) +
         (summary.missionXp < 0 ? 0 : summary.missionXp) +
-        (summary.placements >= participationMinPlacements
+        (summary.placements >= participationMinPlacements &&
+                summary.mergeCount > 0
             ? participationXp
             : 0);
     final isNewBest = summary.score > bestScore;
-    var next = _copy(
+    var next = withActiveRun(null)._copy(
       bestScore: isNewBest ? summary.score : bestScore,
       totalXp: totalXp + xp,
     );
@@ -168,13 +184,16 @@ class CampProgress {
     'discoveredTiers': (discoveredTiers.toList()..sort()),
     'totalXp': totalXp,
     'selectedTheme': selectedTheme.name,
+    if (activeRun != null) 'activeRun': activeRun,
   };
 
   /// Tolerant parser: any missing or invalid field falls back on its own.
   factory CampProgress.fromJson(Object? json) {
     if (json is! Map) return const CampProgress.initial();
     int readInt(Object? value) =>
-        value is num && value.isFinite && value >= 0 ? value.toInt() : 0;
+        value is num && value.isFinite && value >= 0 && value <= 1000000000
+        ? value.toInt()
+        : 0;
     final tiers = <int>{1};
     final rawTiers = json['discoveredTiers'];
     if (rawTiers is List) {
@@ -189,6 +208,11 @@ class CampProgress {
       discoveredTiers: Set.unmodifiable(tiers),
       totalXp: readInt(json['totalXp']),
       selectedTheme: CampTheme.summer,
+      activeRun:
+          json['activeRun'] is Map &&
+              (json['activeRun'] as Map).keys.every((key) => key is String)
+          ? Map<String, dynamic>.unmodifiable(json['activeRun'] as Map)
+          : null,
     );
     final theme = CampTheme.fromName(
       json['selectedTheme'] is String ? json['selectedTheme'] as String : null,
@@ -210,6 +234,7 @@ class CampProgress {
       ),
       totalXp: totalXp ?? this.totalXp,
       selectedTheme: selectedTheme ?? this.selectedTheme,
+      activeRun: activeRun,
     );
   }
 }

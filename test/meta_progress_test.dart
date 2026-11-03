@@ -18,6 +18,7 @@ RunSummary run(int score, {int tier = 1, int placements = 10, int mxp = 0}) =>
       bestChain: 1,
       placements: placements,
       missionXp: mxp,
+      mergeCount: 1,
     );
 
 void main() {

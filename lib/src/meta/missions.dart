@@ -48,7 +48,7 @@ class Mission {
       case MissionKind.reachScore:
         return 'Score ${_groupThousands(target)}';
       case MissionKind.mergeTimes:
-        return 'Merge $target times';
+        return target == 1 ? 'Make your first merge' : 'Merge $target times';
     }
   }
 
@@ -101,6 +101,97 @@ class MissionBoard {
     _setNumber = 1;
     _completedThisRun = 0;
     _active = _buildSet(placements: 0, mergeCount: 0, score: 0, highestTier: 1);
+  }
+
+  /// A short, predictable first run before randomized mission sets begin.
+  void startStarterSet() {
+    _setNumber = 1;
+    _completedThisRun = 0;
+    _setBestChain = 0;
+    _setBestCluster = 0;
+    _active = [
+      const Mission(kind: MissionKind.mergeTimes, target: 1),
+      const Mission(kind: MissionKind.placeTiles, target: 6),
+      const Mission(kind: MissionKind.buildTier, target: 3),
+    ];
+  }
+
+  Map<String, dynamic> toSnapshot() => {
+    'version': 1,
+    'setNumber': _setNumber,
+    'completedThisRun': _completedThisRun,
+    'setBestChain': _setBestChain,
+    'setBestCluster': _setBestCluster,
+    'active': [
+      for (final mission in _active)
+        {
+          'kind': mission.kind.name,
+          'target': mission.target,
+          'progress': mission.progress,
+          'baseline': mission.baseline,
+        },
+    ],
+  };
+
+  /// Rejects malformed snapshots atomically, preserving the current board.
+  bool restoreSnapshot(Object? data) {
+    if (data is! Map || data['version'] != 1) return false;
+    bool integer(Object? value, int min, int max) =>
+        value is int && value >= min && value <= max;
+    if (!integer(data['setNumber'], 1, 1000000) ||
+        !integer(data['completedThisRun'], 0, 3000000) ||
+        !integer(data['setBestChain'], 0, 16) ||
+        !integer(data['setBestCluster'], 0, 16)) {
+      return false;
+    }
+    final rows = data['active'];
+    if (rows is! List || rows.length != missionsPerSet) return false;
+    final restored = <Mission>[];
+    final kinds = <MissionKind>{};
+    for (final row in rows) {
+      if (row is! Map) return false;
+      final matches = MissionKind.values.where((k) => k.name == row['kind']);
+      if (matches.isEmpty) return false;
+      final kind = matches.first;
+      if (!kinds.add(kind) ||
+          !integer(row['target'], 1, 1000000000) ||
+          !integer(row['progress'], 0, row['target'] as int) ||
+          !integer(row['baseline'], 0, 1000000000)) {
+        return false;
+      }
+      final target = row['target'] as int;
+      final baseline = row['baseline'] as int;
+      if ((kind == MissionKind.buildTier &&
+              target > MergeCampController.maxCampTier) ||
+          (kind == MissionKind.makeChain && target > 16) ||
+          (kind == MissionKind.bigMerge && (target < 3 || target > 16)) ||
+          (kind != MissionKind.placeTiles &&
+              kind != MissionKind.mergeTimes &&
+              baseline != 0)) {
+        return false;
+      }
+      restored.add(
+        Mission(
+          kind: kind,
+          target: target,
+          progress: row['progress'] as int,
+          baseline: baseline,
+        ),
+      );
+    }
+    final completed = restored.where((m) => m.completed).length;
+    final setNumber = data['setNumber'] as int;
+    if (completed == missionsPerSet ||
+        data['completedThisRun'] !=
+            (setNumber - 1) * missionsPerSet + completed) {
+      return false;
+    }
+    _setNumber = setNumber;
+    _completedThisRun = data['completedThisRun'] as int;
+    _setBestChain = data['setBestChain'] as int;
+    _setBestCluster = data['setBestCluster'] as int;
+    _active = restored;
+    return true;
   }
 
   /// Call after every successful placement. Returns the missions that were
