@@ -1,4 +1,5 @@
 import 'camp_theme.dart';
+import 'stickers.dart';
 
 /// Facts about one finished (or restarted) run, fed to [CampProgress.applyRun].
 class RunSummary {
@@ -31,6 +32,7 @@ class RunOutcome {
     required this.levelBefore,
     required this.levelAfter,
     required this.newlyUnlockedThemes,
+    this.newStickers = const <StickerAward>[],
   });
 
   final CampProgress progress;
@@ -40,9 +42,13 @@ class RunOutcome {
   final int levelBefore;
   final int levelAfter;
   final List<CampTheme> newlyUnlockedThemes;
+
+  /// Stickers of the levels gained, in level order, with their auto slot.
+  final List<StickerAward> newStickers;
 }
 
-/// Saved meta progress: best score, camp album, camp XP and chosen theme.
+/// Saved meta progress: best score, camp album, camp XP, chosen theme and
+/// where the owned stickers are stuck.
 ///
 /// Tuning (measured with a throwaway greedy/random player on the real
 /// controller, 400 seeds per player type; scores before missions):
@@ -65,6 +71,8 @@ class CampProgress {
     required this.totalXp,
     required this.selectedTheme,
     this.activeRun,
+    this.stickerSlots = const StickerSlots.empty(),
+    this.stickersSeen,
   });
 
   const CampProgress.initial()
@@ -72,6 +80,8 @@ class CampProgress {
       discoveredTiers = const <int>{1},
       totalXp = 0,
       activeRun = null,
+      stickerSlots = const StickerSlots.empty(),
+      stickersSeen = null,
       selectedTheme = CampTheme.summer;
 
   /// Highest camp tier that has an album entry.
@@ -92,12 +102,21 @@ class CampProgress {
   /// Optional live run envelope, validated by the screen before restoration.
   final Map<String, dynamic>? activeRun;
 
+  /// Stickers stuck around the board; only owned stickers, see [withSticker].
+  final StickerSlots stickerSlots;
+
+  /// Highest level whose stickers the player was already told about; null
+  /// in saves from before stickers existed.
+  final int? stickersSeen;
+
   CampProgress withActiveRun(Map<String, dynamic>? run) => CampProgress(
     bestScore: bestScore,
     discoveredTiers: Set.unmodifiable(discoveredTiers),
     totalXp: totalXp,
     selectedTheme: selectedTheme,
     activeRun: run == null ? null : Map.unmodifiable(run),
+    stickerSlots: stickerSlots,
+    stickersSeen: stickersSeen,
   );
 
   /// XP needed to go from [level] to the next one.
@@ -121,6 +140,37 @@ class CampProgress {
   }
 
   bool isThemeUnlocked(CampTheme theme) => level >= theme.requiredLevel;
+
+  List<Sticker> get ownedStickers => Sticker.ownedAt(level);
+
+  /// Owned stickers not stuck on a slot.
+  List<Sticker> get stickerTray => stickerSlots.trayAt(level);
+
+  /// Owned stickers the player has not been told about yet: those above
+  /// [stickersSeen]. A brand-new player (no XP, no best) is told nothing;
+  /// they earn their stickers with the usual level-up reward instead.
+  int get unseenStickerCount {
+    final owned = Sticker.ownedCount(level);
+    if (stickersSeen == null && totalXp == 0 && bestScore == 0) return 0;
+    return (owned - Sticker.ownedCount(stickersSeen ?? 0)).clamp(0, owned);
+  }
+
+  /// Marks every owned sticker as announced.
+  CampProgress withStickersSeen() =>
+      stickersSeen == level ? this : _copy(stickersSeen: level);
+
+  /// Sticks owned sticker [id] on [slot] (swapping, see [StickerSlots.put]).
+  CampProgress withSticker(String id, int slot) {
+    if (!(Sticker.byId(id)?.isOwnedAt(level) ?? false)) return this;
+    final next = stickerSlots.put(id, slot);
+    return identical(next, stickerSlots) ? this : _copy(stickerSlots: next);
+  }
+
+  /// Returns the sticker on [slot] to the tray.
+  CampProgress withoutSticker(int slot) {
+    final next = stickerSlots.remove(slot);
+    return identical(next, stickerSlots) ? this : _copy(stickerSlots: next);
+  }
 
   CampProgress withDiscovered(int tier) {
     final clamped = tier.clamp(1, maxAlbumTier);
@@ -163,6 +213,25 @@ class CampProgress {
     // guarantees its highest camp is in the album.
     next = next.withDiscovered(summary.highestTier);
     final levelAfter = next.level;
+    // Each level gained awards its sticker, stuck on the first empty slot
+    // in level order (or left in the tray when the slots are full).
+    final awards = <StickerAward>[];
+    var slots = next.stickerSlots;
+    for (var l = levelBefore + 1; l <= levelAfter; l++) {
+      final sticker = Sticker.forLevel(l);
+      if (sticker == null) break;
+      final slot = slots.firstEmpty;
+      if (slot != null) slots = slots.put(sticker.id, slot);
+      awards.add(StickerAward(sticker, slot));
+    }
+    if (levelAfter > levelBefore) {
+      next = next._copy(
+        stickerSlots: slots,
+        stickersSeen: levelAfter > (stickersSeen ?? 0)
+            ? levelAfter
+            : stickersSeen,
+      );
+    }
     return RunOutcome(
       progress: next,
       xpGained: xp,
@@ -176,6 +245,7 @@ class CampProgress {
               levelAfter >= theme.requiredLevel)
             theme,
       ],
+      newStickers: awards,
     );
   }
 
@@ -185,6 +255,8 @@ class CampProgress {
     'totalXp': totalXp,
     'selectedTheme': selectedTheme.name,
     if (activeRun != null) 'activeRun': activeRun,
+    'stickerSlots': stickerSlots.toJson(),
+    if (stickersSeen != null) 'stickersSeen': stickersSeen,
   };
 
   /// Tolerant parser: any missing or invalid field falls back on its own.
@@ -218,7 +290,16 @@ class CampProgress {
       json['selectedTheme'] is String ? json['selectedTheme'] as String : null,
     );
     progress = progress.withTheme(theme);
-    return progress;
+    final seen = json['stickersSeen'];
+    return progress._copy(
+      stickerSlots: StickerSlots.fromJson(
+        json['stickerSlots'],
+        level: progress.level,
+      ),
+      stickersSeen: seen is num && seen.isFinite && seen >= 0 && seen <= 1000
+          ? seen.toInt()
+          : null,
+    );
   }
 
   CampProgress _copy({
@@ -226,6 +307,8 @@ class CampProgress {
     Set<int>? discoveredTiers,
     int? totalXp,
     CampTheme? selectedTheme,
+    StickerSlots? stickerSlots,
+    int? stickersSeen,
   }) {
     return CampProgress(
       bestScore: bestScore ?? this.bestScore,
@@ -235,6 +318,8 @@ class CampProgress {
       totalXp: totalXp ?? this.totalXp,
       selectedTheme: selectedTheme ?? this.selectedTheme,
       activeRun: activeRun,
+      stickerSlots: stickerSlots ?? this.stickerSlots,
+      stickersSeen: stickersSeen ?? this.stickersSeen,
     );
   }
 }
