@@ -9,6 +9,7 @@ related_specs:
   - feature-retention-polish
   - feature-crazygames-cloud-save
   - feature-mobile-perf
+  - feature-camp-stickers
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md

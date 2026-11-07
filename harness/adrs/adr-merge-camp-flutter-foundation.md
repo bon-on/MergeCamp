@@ -8,6 +8,7 @@ related_specs:
   - feature-retention-polish
   - feature-first-run-resume
   - feature-mobile-perf
+  - feature-camp-stickers
 ---
 
 # ADR: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합을 사용

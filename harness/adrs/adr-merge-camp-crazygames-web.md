@@ -9,6 +9,7 @@ related_specs:
   - feature-retention-polish
   - feature-crazygames-cloud-save
   - feature-mobile-perf
+  - feature-camp-stickers
 ---
 
 # ADR: CrazyGames 배포에 빌드 플래그와 플랫폼 어댑터 사용

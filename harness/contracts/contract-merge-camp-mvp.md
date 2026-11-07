@@ -7,6 +7,7 @@ related_specs:
   - feature-sound-effects
   - feature-retention-polish
   - feature-first-run-resume
+  - feature-camp-stickers
 evidence_files:
   - reports/merge-camp-audit-report.md
   - reports/merge-camp-plan-report.md
