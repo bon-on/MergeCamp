@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../art/camp_palette.dart';
 import '../../art/camp_tile_art.dart';
+import '../../art/sticker_art.dart';
 import '../../meta/camp_progress.dart';
 import '../../meta/camp_theme.dart';
 import '../merge_camp_controller.dart';
@@ -37,6 +38,7 @@ class RunSummaryOverlay extends StatefulWidget {
     required this.theme,
     required this.onPlayAgain,
     required this.onAlbum,
+    required this.onDecorate,
     required this.playAgainFocus,
     this.busy = false,
     this.animateArt = true,
@@ -46,6 +48,7 @@ class RunSummaryOverlay extends StatefulWidget {
   final CampTheme theme;
   final VoidCallback onPlayAgain;
   final VoidCallback onAlbum;
+  final VoidCallback onDecorate;
 
   /// Owned by the screen so it can refocus the button after the album.
   final FocusNode playAgainFocus;
@@ -281,7 +284,6 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         Row(
           children: [
             Expanded(
-              flex: 2,
               child: CampButton(
                 palette: palette,
                 label: 'Album',
@@ -292,16 +294,23 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             ),
             const SizedBox(width: 10),
             Expanded(
-              flex: 3,
               child: CampButton(
                 palette: palette,
-                label: 'Play again',
-                icon: Icons.replay_rounded,
-                focusNode: widget.playAgainFocus,
-                onPressed: widget.busy ? null : widget.onPlayAgain,
+                label: 'Decorate',
+                icon: Icons.auto_awesome_rounded,
+                primary: false,
+                onPressed: widget.onDecorate,
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        CampButton(
+          palette: palette,
+          label: 'Play again',
+          icon: Icons.replay_rounded,
+          focusNode: widget.playAgainFocus,
+          onPressed: widget.busy ? null : widget.onPlayAgain,
         ),
         const SizedBox(height: 6),
         Text(
@@ -401,6 +410,19 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
                         icon: Icons.landscape_rounded,
                         text: '${theme.label} theme unlocked',
                       ),
+                    for (final award in outcome.newStickers)
+                      _Chip(
+                        key: ValueKey('summary-sticker-${award.sticker.id}'),
+                        palette: palette,
+                        leading: SizedBox.square(
+                          dimension: 26,
+                          child: StickerArt(
+                            sticker: award.sticker,
+                            sparkle: widget.animateArt,
+                          ),
+                        ),
+                        text: 'New sticker: ${award.sticker.name}',
+                      ),
                   ],
                 ),
               ),
@@ -464,14 +486,19 @@ class _Stat extends StatelessWidget {
 
 class _Chip extends StatelessWidget {
   const _Chip({
+    super.key,
     required this.palette,
-    required this.icon,
     required this.text,
+    this.icon,
+    this.leading,
     this.strong = false,
   });
 
   final CampPalette palette;
-  final IconData icon;
+  final IconData? icon;
+
+  /// Shown instead of [icon] (a sticker badge).
+  final Widget? leading;
   final String text;
   final bool strong;
 
@@ -491,14 +518,16 @@ class _Chip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: fg),
+          leading ?? Icon(icon, size: 16, color: fg),
           const SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              color: fg,
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: fg,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],

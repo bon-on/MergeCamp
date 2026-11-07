@@ -22,6 +22,7 @@ import 'ui/album_overlay.dart';
 import 'ui/banners.dart';
 import 'ui/board_fx.dart';
 import 'ui/camp_layout.dart';
+import 'ui/decor_overlay.dart';
 import 'ui/run_summary_overlay.dart';
 import '../../result_registration.dart';
 
@@ -92,6 +93,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _tutorialLoading = true;
   bool _showHowTo = false;
   bool _albumOpen = false;
+  bool _decorOpen = false;
   bool _firstRun = false;
   // The first run still owes the fixed starter missions; survives closing
   // the card before stored progress arrives.
@@ -138,7 +140,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   bool get _tutorialBlocking =>
       _tutorialLoading || _showHowTo || !_progressLoaded;
-  bool get _overlayOpen => _albumOpen || _controller.isGameOver;
+  bool get _overlayOpen => _albumOpen || _decorOpen || _controller.isGameOver;
   CampTheme get _theme => _progress.selectedTheme;
   bool get _effectsOn => !_reduceMotion;
 
@@ -206,13 +208,38 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
             ? _progress.selectedTheme
             : loaded.selectedTheme,
         activeRun: loaded.activeRun,
+        stickerSlots: loaded.stickerSlots,
+        stickersSeen: loaded.stickersSeen,
       );
     });
+    _announceStickers();
     if (!_progressChangedBeforeLoad) _restoreRun();
     _prepareStarterMissions();
     _startRequestedPractice();
     if (_progressChangedBeforeLoad) unawaited(_saveProgress());
     _syncGameplay();
+  }
+
+  /// Players returning from before stickers existed get one quiet notice
+  /// for the stickers their level already owns (they wait in the tray).
+  /// Brand-new players only have the marker set, saved with the next write.
+  void _announceStickers() {
+    final unseen = _progress.unseenStickerCount;
+    final seen = _progress.withStickersSeen();
+    if (identical(seen, _progress)) return;
+    if (unseen == 0) {
+      _progress = seen;
+      return;
+    }
+    setState(() {
+      _toast(
+        unseen == 1
+            ? '1 sticker ready to place'
+            : '$unseen stickers ready to place',
+        Icons.auto_awesome_rounded,
+      );
+      _setProgress(seen);
+    });
   }
 
   void _setProgress(CampProgress next, {int xpGained = 0}) {
@@ -412,6 +439,34 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _refocus();
   }
 
+  void _openDecor() {
+    if (_decorOpen) return;
+    setState(() {
+      _decorOpen = true;
+      _trailAxeMode = false;
+    });
+    _syncGameplay();
+  }
+
+  void _closeDecor() {
+    if (!_decorOpen) return;
+    setState(() => _decorOpen = false);
+    _syncGameplay();
+    _refocus();
+  }
+
+  void _placeSticker(String id, int slot) {
+    final next = _progress.withSticker(id, slot);
+    if (identical(next, _progress)) return;
+    setState(() => _setProgress(next));
+  }
+
+  void _removeSticker(int slot) {
+    final next = _progress.withoutSticker(slot);
+    if (identical(next, _progress)) return;
+    setState(() => _setProgress(next));
+  }
+
   void _selectTheme(CampTheme theme) {
     final next = _progress.withTheme(theme);
     if (identical(next, _progress) || next.selectedTheme == _theme) return;
@@ -423,7 +478,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   /// is up.
   void _refocus() {
     if (_controller.isGameOver && _playAgainFocus.context != null) {
-      _playAgainFocus.requestFocus();
+      // After the album or decor screen the summary only becomes focusable
+      // again once it is rebuilt without its ExcludeFocus.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _controller.isGameOver) _playAgainFocus.requestFocus();
+      });
     } else {
       _focusNode.requestFocus();
     }
@@ -647,6 +706,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           'Camp level up! Lv ${outcome.levelAfter}',
           Icons.arrow_upward_rounded,
         );
+        final stickers = outcome.newStickers;
+        if (stickers.isNotEmpty) {
+          _toast(
+            '${stickers.length == 1 ? 'New sticker' : 'New stickers'}: '
+            '${stickers.map((award) => award.sticker.name).join(', ')}',
+            Icons.auto_awesome_rounded,
+          );
+        }
       }
     }
     _trailAxeMode = false;
@@ -662,11 +729,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   /// Reports gameplay start/stop to the platform exactly on transitions:
-  /// running only while no tutorial or album is open and the run is not
-  /// over (the run summary is up while it is).
+  /// running only while no tutorial, album or decor screen is open and the
+  /// run is not over (the run summary is up while it is).
   void _syncGameplay() {
     final wantActive =
-        !_tutorialBlocking && !_controller.isGameOver && !_albumOpen;
+        !_tutorialBlocking &&
+        !_controller.isGameOver &&
+        !_albumOpen &&
+        !_decorOpen;
     if (wantActive == _gameplayActive) return;
     _gameplayActive = wantActive;
     if (wantActive) {
@@ -703,11 +773,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       LogicalKeyboardKey.numpadEnter,
       LogicalKeyboardKey.space,
     ];
-    // Album and run summary: the board gets no input. Their buttons keep
-    // Enter/Space (focus activation) and arrows (focus moves).
-    if (_albumOpen) {
+    // Album, decor screen and run summary: the board gets no input. Their
+    // buttons keep Enter/Space (focus activation) and arrows (focus moves).
+    if (_albumOpen || _decorOpen) {
       if (key == LogicalKeyboardKey.escape) {
-        if (!isRepeat) _closeAlbum();
+        if (!isRepeat) _albumOpen ? _closeAlbum() : _closeDecor();
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
@@ -785,7 +855,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     bool forceAxe = false,
     bool fromPointer = false,
   }) async {
-    if (_breakAdInProgress || _handlingTap || _tutorialBlocking || _albumOpen) {
+    if (_breakAdInProgress ||
+        _handlingTap ||
+        _tutorialBlocking ||
+        _albumOpen ||
+        _decorOpen) {
       return;
     }
     if (fromPointer && _cursor != null) {
@@ -889,6 +963,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             onCellTap: (index) =>
                                 _handleCellTap(index, fromPointer: true),
                             onOpenAlbum: _openAlbum,
+                            onOpenDecor: _openDecor,
                             onOpenHelp: _openHowToPlay,
                             onToggleSound: _toggleSound,
                             onRestart: () => unawaited(_restartRun()),
@@ -917,7 +992,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                 if (_controller.isGameOver)
                   Positioned.fill(
                     child: ExcludeFocus(
-                      excluding: _albumOpen || _tutorialBlocking,
+                      excluding: _albumOpen || _decorOpen || _tutorialBlocking,
                       child: RunSummaryOverlay(
                         report:
                             _report ??
@@ -933,6 +1008,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                         playAgainFocus: _playAgainFocus,
                         onPlayAgain: () => unawaited(_restartRun()),
                         onAlbum: _openAlbum,
+                        onDecorate: _openDecor,
                       ),
                     ),
                   ),
@@ -945,6 +1021,19 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                         animateArt: loopingArt,
                         onSelectTheme: _selectTheme,
                         onClose: _closeAlbum,
+                      ),
+                    ),
+                  ),
+                if (_decorOpen)
+                  Positioned.fill(
+                    child: ExcludeFocus(
+                      excluding: _tutorialBlocking,
+                      child: DecorOverlay(
+                        progress: _progress,
+                        animateArt: loopingArt,
+                        onPlace: _placeSticker,
+                        onRemove: _removeSticker,
+                        onClose: _closeDecor,
                       ),
                     ),
                   ),

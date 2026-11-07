@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../art/camp_palette.dart';
+import '../../art/sticker_art.dart';
 import '../../meta/camp_progress.dart';
 import '../../meta/camp_theme.dart';
 import '../../meta/missions.dart';
+import '../../meta/stickers.dart';
 import '../merge_camp_controller.dart';
 import 'banners.dart';
 import 'board_fx.dart';
@@ -41,6 +43,7 @@ class CampHudLayout extends StatelessWidget {
     required this.toasts,
     required this.onCellTap,
     required this.onOpenAlbum,
+    required this.onOpenDecor,
     required this.onOpenHelp,
     required this.onToggleSound,
     required this.onRestart,
@@ -69,6 +72,7 @@ class CampHudLayout extends StatelessWidget {
   final List<ToastMessage> toasts;
   final ValueChanged<int> onCellTap;
   final VoidCallback onOpenAlbum;
+  final VoidCallback onOpenDecor;
   final VoidCallback onOpenHelp;
   final VoidCallback onToggleSound;
   final VoidCallback onRestart;
@@ -217,6 +221,13 @@ class CampHudLayout extends StatelessWidget {
     ),
     PanelIconButton(
       palette: palette,
+      icon: Icons.auto_awesome_rounded,
+      tooltip: 'Decorate',
+      onPressed: onOpenDecor,
+      size: size,
+    ),
+    PanelIconButton(
+      palette: palette,
       icon: Icons.help_outline_rounded,
       tooltip: 'How to play',
       onPressed: onOpenHelp,
@@ -281,16 +292,21 @@ class CampHudLayout extends StatelessWidget {
     // A little extra room below the board so it never touches the bottom
     // edge (hub page, browser chrome).
     const bottomPad = 28.0;
-    const gap = 20.0;
     final side = (c.maxWidth * 0.23).clamp(180.0, 300.0);
+    final columnHeight = c.maxHeight - pad - bottomPad;
+    // Sticker lanes around the board. The left and right lanes take the
+    // place of the gaps, and only when the board keeps its minimum size.
+    final lane = (math.min(c.maxWidth, c.maxHeight) * 0.06).clamp(24.0, 52.0);
+    final across = c.maxWidth - side * 2 - pad * 2;
+    final showSides = across - 12 - lane * 2 >= 200;
+    final gap = showSides ? 6.0 : 20.0;
     final boardSide = math.max(
       200.0,
       math.min(
-        c.maxHeight - pad - bottomPad,
-        c.maxWidth - side * 2 - gap * 2 - pad * 2,
+        columnHeight - lane * 2,
+        across - gap * 2 - (showSides ? lane * 2 : 0),
       ),
     );
-    final columnHeight = c.maxHeight - pad - bottomPad;
 
     final left = Column(
       mainAxisSize: MainAxisSize.min,
@@ -425,12 +441,15 @@ class CampHudLayout extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           sideColumn(left),
-          const SizedBox(width: gap),
-          SizedBox.square(
-            dimension: boardSide,
+          SizedBox(width: gap),
+          _StickerFrame(
+            slots: progress.stickerSlots,
+            board: boardSide,
+            lane: lane,
+            showSides: showSides,
             child: _board(palette, loopingArt),
           ),
-          const SizedBox(width: gap),
+          SizedBox(width: gap),
           sideColumn(right),
         ],
       ),
@@ -594,15 +613,24 @@ class CampHudLayout extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, area) {
               final stripHeight = small ? 58.0 : 66.0;
+              // Sticker lanes above and below the board; the side lanes
+              // only when the board leaves room for them.
+              final lane = (area.maxWidth * 0.1).clamp(24.0, 44.0);
               final boardSide = math.max(
                 120.0,
-                math.min(area.maxWidth, area.maxHeight - stripHeight - 10),
+                math.min(
+                  area.maxWidth,
+                  area.maxHeight - stripHeight - 10 - lane * 2,
+                ),
               );
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox.square(
-                    dimension: boardSide,
+                  _StickerFrame(
+                    slots: progress.stickerSlots,
+                    board: boardSide,
+                    lane: lane,
+                    showSides: area.maxWidth - boardSide >= lane * 2,
                     child: _board(palette, loopingArt, toastsOnBoard: true),
                   ),
                   const SizedBox(height: 10),
@@ -620,6 +648,58 @@ class CampHudLayout extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The board with its sticker lanes: [lane] above and below, and left and
+/// right when [showSides]. Stickers are one static, non-interactive layer
+/// in the lanes and never cover the board.
+class _StickerFrame extends StatelessWidget {
+  const _StickerFrame({
+    required this.slots,
+    required this.board,
+    required this.lane,
+    required this.showSides,
+    required this.child,
+  });
+
+  final StickerSlots slots;
+  final double board;
+  final double lane;
+  final bool showSides;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final side = showSides ? lane : 0.0;
+    final rect = Rect.fromLTWH(side, lane, board, board);
+    return SizedBox(
+      width: board + side * 2,
+      height: board + lane * 2,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fromRect(rect: rect, child: child),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: const ValueKey('board-stickers'),
+                  painter: BoardStickerPainter(
+                    slots: slots,
+                    boardRect: rect,
+                    lane: lane,
+                    showSides: showSides,
+                    devicePixelRatio:
+                        MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
