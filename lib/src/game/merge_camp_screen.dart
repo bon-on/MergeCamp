@@ -222,22 +222,20 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   /// Players returning from before stickers existed get one quiet notice
   /// for the stickers their level already owns (they wait in the tray).
-  /// Brand-new players only have the marker set, saved with the next write.
+  /// Brand-new players get the Pennant stuck on the board instead.
   void _announceStickers() {
     final unseen = _progress.unseenStickerCount;
     final seen = _progress.withStickersSeen();
     if (identical(seen, _progress)) return;
-    if (unseen == 0) {
-      _progress = seen;
-      return;
-    }
     setState(() {
-      _toast(
-        unseen == 1
-            ? '1 sticker ready to place'
-            : '$unseen stickers ready to place',
-        Icons.auto_awesome_rounded,
-      );
+      if (unseen > 0) {
+        _toast(
+          unseen == 1
+              ? '1 sticker ready to place'
+              : '$unseen stickers ready to place',
+          Icons.auto_awesome_rounded,
+        );
+      }
       _setProgress(seen);
     });
   }

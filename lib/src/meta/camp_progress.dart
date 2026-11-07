@@ -146,18 +146,36 @@ class CampProgress {
   /// Owned stickers not stuck on a slot.
   List<Sticker> get stickerTray => stickerSlots.trayAt(level);
 
+  /// No saved sticker marker and nothing earned yet: a first-ever load.
+  bool get _isNewPlayer =>
+      stickersSeen == null && totalXp == 0 && bestScore == 0;
+
   /// Owned stickers the player has not been told about yet: those above
-  /// [stickersSeen]. A brand-new player (no XP, no best) is told nothing;
-  /// they earn their stickers with the usual level-up reward instead.
+  /// [stickersSeen]. A brand-new player is told nothing; their first
+  /// sticker is stuck on the board instead (see [withStickersSeen]).
   int get unseenStickerCount {
+    if (_isNewPlayer) return 0;
     final owned = Sticker.ownedCount(level);
-    if (stickersSeen == null && totalXp == 0 && bestScore == 0) return 0;
     return (owned - Sticker.ownedCount(stickersSeen ?? 0)).clamp(0, owned);
   }
 
-  /// Marks every owned sticker as announced.
-  CampProgress withStickersSeen() =>
-      stickersSeen == level ? this : _copy(stickersSeen: level);
+  /// Marks every owned sticker as announced. A brand-new player also gets
+  /// their owned stickers (the Lv1 Pennant) stuck on the first empty slots,
+  /// so the board shows one from the first run; returning players find
+  /// theirs in the tray. Never lowers a marker above the current level.
+  CampProgress withStickersSeen() {
+    final seen = stickersSeen;
+    if (seen != null && seen >= level) return this;
+    var slots = stickerSlots;
+    if (_isNewPlayer) {
+      for (final sticker in stickerTray) {
+        final slot = slots.firstEmpty;
+        if (slot == null) break;
+        slots = slots.put(sticker.id, slot);
+      }
+    }
+    return _copy(stickerSlots: slots, stickersSeen: level);
+  }
 
   /// Sticks owned sticker [id] on [slot] (swapping, see [StickerSlots.put]).
   CampProgress withSticker(String id, int slot) {

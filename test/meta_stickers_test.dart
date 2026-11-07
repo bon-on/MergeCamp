@@ -170,6 +170,39 @@ void main() {
       // A brand-new player is not told anything.
       expect(const CampProgress.initial().unseenStickerCount, 0);
       expect(atLevel(30, seen: 3).unseenStickerCount, 22);
+      // A marker above the level (another device) is never lowered.
+      final ahead = atLevel(3, seen: 9);
+      expect(identical(ahead.withStickersSeen(), ahead), isTrue);
+      expect(ahead.unseenStickerCount, 0);
+    });
+
+    test('a brand-new player gets the Pennant stuck on the first slot', () {
+      final welcomed = const CampProgress.initial().withStickersSeen();
+      expect(welcomed.stickersSeen, 1);
+      expect(welcomed.stickerSlots.toJson(), {'0': 'pennant'});
+      expect(identical(welcomed.withStickersSeen(), welcomed), isTrue);
+      final back = CampProgress.fromJson(
+        jsonDecode(jsonEncode(welcomed.toJson())),
+      );
+      expect(back.stickerSlots.at(0), 'pennant');
+      expect(back.stickersSeen, 1);
+      expect(identical(back.withStickersSeen(), back), isTrue);
+      // A first-ever load from storage (no stickersSeen) is the same.
+      final loaded = CampProgress.fromJson(
+        <String, Object>{},
+      ).withStickersSeen();
+      expect(loaded.stickerSlots.at(0), 'pennant');
+      // Returning players keep theirs in the tray, even at level 1.
+      final returning = atLevel(1).withStickersSeen();
+      expect(returning.stickerSlots.isEmpty, isTrue);
+      expect(returning.stickersSeen, 1);
+      // Reaching Lv2 then sticks the Pine Tree next to the Pennant.
+      final outcome = welcomed.applyRun(runWithXp(CampProgress.xpToAdvance(1)));
+      expect(outcome.newStickers.single.slot, 1);
+      expect(outcome.progress.stickerSlots.toJson(), {
+        '0': 'pennant',
+        '1': 'pine-tree',
+      });
     });
 
     test('a level-up sticks the new sticker on the first empty slot', () {

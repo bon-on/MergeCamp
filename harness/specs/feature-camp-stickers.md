@@ -49,6 +49,9 @@ required_evidence:
      "New sticker: <이름>"을 보여준다.
    - 처음 접속한 기존 플레이어에게는 보상 연출 없이 "N stickers ready to place" 한 줄만 한 번 보여준다. 이미 저장된 레벨에 해당하는
      스티커는 자동 배치하지 않고 보관함에 둔다(저장된 `stickersSeen`이 없으면 이 경우).
+   - 처음 시작하는 플레이어(저장된 진행도가 없거나 `stickersSeen`이 없고 XP와 최고 점수가 0)는 Lv1 Pennant를 첫 빈 슬롯에 바로
+     붙이고 `stickersSeen`을 현재 레벨로 저장한다. 안내나 보상 연출은 없고, 첫 판부터 보드 옆에 스티커가 하나 보인다.
+   - 저장된 `stickersSeen`이 현재 레벨보다 높으면(다른 기기 등) 낮추지 않는다.
 5. 꾸미기 화면(오버레이)
    - 보드 모양의 틀, 슬롯 10개, 보관함(보유한 스티커 그리드, 미보유는 실루엣과 필요한 레벨)을 보여준다.
    - 스티커를 탭해 고른 뒤 슬롯을 탭하면 붙고, 이미 차지한 슬롯이면 서로 바꾼다. 붙은 스티커를 다시 탭하면 보관함으로 돌아간다.
@@ -68,7 +71,8 @@ required_evidence:
   빈 슬롯이 없으면 붙지 않고 보관함에 남는다.
 - 배치는 JSON 왕복 후 같다. 보유하지 않은 스티커, 범위 밖 슬롯, 중복 스티커는 파싱에서 버려진다. 손상된 값은 빈 배치로 대체되고 플레이를 막지 않는다.
 - 꾸미기 화면에서 붙이기, 바꾸기, 떼기가 되고, 같은 스티커가 두 슬롯에 있을 수 없다.
-- `stickersSeen`이 없는 기존 진행도에서는 보상 연출 없이 안내 한 줄만 보인다.
+- `stickersSeen`이 없는 기존 진행도에서는 보상 연출 없이 안내 한 줄만 보이고, 스티커는 자동 배치되지 않는다.
+- 처음 시작하는 플레이어는 첫 로드 직후 Pennant가 슬롯 0에 붙어 있고 `stickersSeen`이 1이며, JSON 왕복 뒤에도 같다. 다시 로드해도 또 붙이지 않는다.
 - 꾸미기 화면이 열려 있는 동안 보드 입력이 막히고, 닫으면 입력이 다시 된다. Esc로 닫힌다.
 - 1280x720, 1366x768, 390x844에서 오버플로 없이 표시된다. 스티커가 보드 칸을 덮지 않는다.
 - 스티커 층은 정적이며 캐시된다(배치가 같으면 재생성하지 않는다). 기존 성능 테스트와 모든 기존 테스트가 통과한다.
@@ -90,7 +94,7 @@ required_evidence:
 
 ### 검증 결과
 2026-11-07, 기준 커밋 ae97828 이후 구현.
-- `flutter analyze` 이슈 없음. `flutter test` 226개 통과(`test/meta_stickers_test.dart`, `test/decor_stickers_test.dart` 포함). `flutter test --platform chrome test/web` 16개 통과.
+- `flutter analyze` 이슈 없음. `flutter test` 226개 통과(Pennant 후속 변경 후 227개)(`test/meta_stickers_test.dart`, `test/decor_stickers_test.dart` 포함). `flutter test --platform chrome test/web` 16개 통과.
 - `tool/build_crazygames.sh`, `tool/build_gamepix.sh` 자체 검사 통과. `flutter build web --release --base-href /MergeCamp/` 성공.
 - harness audit: Critical 0. 남은 경고는 이 명세와 무관한 기존 항목(workflow/maintenance 파일, how-to-play 백링크)이다.
 - 독립 리뷰(code-reviewer): Critical/High 없음. 320x640 꾸미기 헤더 오버플로는 수정했고, 레이아웃 테스트의 9개 크기를 모두 꾸미기 테스트에 넣었다.

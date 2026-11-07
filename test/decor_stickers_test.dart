@@ -320,13 +320,20 @@ void main() {
     expect(find.textContaining('ready to place'), findsNothing);
   });
 
-  testWidgets('brand-new players get no notice', (tester) async {
+  testWidgets('brand-new players start with the Pennant on the board', (
+    tester,
+  ) async {
     final (_, store) = await _pump(tester);
     expect(find.textContaining('ready to place'), findsNothing);
-    expect(store.saveCount, 0);
+    expect(find.textContaining('New sticker'), findsNothing);
+    expect(store.value.stickersSeen, 1);
+    expect(store.value.stickerSlots.toJson(), {'0': 'pennant'});
+    expect(_boardLayer(tester).slots.at(0), 'pennant');
+    // The first move keeps it; a later load does not place it again.
     await tester.tap(_cell(0));
     await tester.pump();
-    expect(store.value.stickersSeen, 1);
+    expect(store.value.stickerSlots.toJson(), {'0': 'pennant'});
+    expect(store.value.activeRun, isNotNull);
     await tester.pump(const Duration(seconds: 3));
   });
 
