@@ -145,17 +145,6 @@ class StickerSlots {
     return StickerSlots._(Map.unmodifiable(Map.of(_slots)..remove(slot)));
   }
 
-  /// Drops stickers a player at [level] does not own.
-  StickerSlots ownedOnly(int level) {
-    final kept = {
-      for (final entry in _slots.entries)
-        if (Sticker.byId(entry.value)?.isOwnedAt(level) ?? false)
-          entry.key: entry.value,
-    };
-    if (kept.length == _slots.length) return this;
-    return StickerSlots._(Map.unmodifiable(kept));
-  }
-
   Map<String, String> toJson() => {
     for (final slot in occupied) '$slot': _slots[slot]!,
   };

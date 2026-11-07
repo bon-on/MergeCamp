@@ -175,13 +175,17 @@ class _DecorOverlayState extends State<DecorOverlay> {
                                     ),
                                   ),
                                 ),
-                                Text(
-                                  '$owned / ${Sticker.count} stickers',
-                                  key: const ValueKey('decor-count'),
-                                  style: TextStyle(
-                                    color: palette.textSecondary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
+                                Flexible(
+                                  child: Text(
+                                    '$owned / ${Sticker.count} stickers',
+                                    key: const ValueKey('decor-count'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: palette.textSecondary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 4),

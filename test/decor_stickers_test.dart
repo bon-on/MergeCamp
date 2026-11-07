@@ -392,7 +392,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final size in const [Size(1280, 720), Size(1366, 768), Size(390, 844)]) {
+  testWidgets('a mid-run restart toasts the new stickers', (tester) async {
+    Future<void> restartAfter(int levelsUp, String toast) async {
+      final (controller, store) = await _pump(
+        tester,
+        progress: _progress(level: 1, seen: 1),
+      );
+      final need = _xpForLevel(1 + levelsUp) - store.value.totalXp;
+      // Five placements and one merge earn participation XP on top.
+      controller.debugLoadBoard(
+        List<int?>.filled(16, null),
+        nextTier: 1,
+        previewTiers: const [1, 1, 1, 1, 1],
+        score: (need - CampProgress.participationXp) * 10,
+      );
+      for (final cell in const [0, 1, 2, 8, 10]) {
+        await tester.tap(_cell(cell));
+        await tester.pump();
+      }
+      expect(controller.mergeCount, greaterThan(0));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+      expect(store.value.level, 1 + levelsUp);
+      expect(find.text(toast), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+    }
+
+    await restartAfter(1, 'New sticker: Pine Tree');
+    await tester.pumpWidget(const SizedBox());
+    await restartAfter(2, 'New stickers: Pine Tree, Acorn');
+  });
+
+  for (final size in const [
+    Size(1280, 720),
+    Size(1280, 672),
+    Size(1366, 768),
+    Size(390, 844),
+    Size(390, 796),
+    Size(844, 390),
+    Size(360, 640),
+    Size(640, 480),
+    Size(320, 640),
+  ]) {
     testWidgets('stickers and decor screen fit $size', (tester) async {
       final full = {
         for (var slot = 0; slot < StickerSlots.count; slot++)
@@ -404,12 +445,15 @@ void main() {
         progress: _progress(level: 25, seen: 25, slots: full),
       );
       expect(tester.takeException(), isNull);
-      final wide = size.width > size.height;
-      expect(_boardLayer(tester).showSides, wide);
+      final sides = _boardLayer(tester).showSides;
+      if (size == const Size(1280, 720) || size == const Size(1366, 768)) {
+        expect(sides, isTrue);
+      }
+      if (size == const Size(390, 844)) expect(sides, isFalse);
       final grid = tester.getRect(find.byType(GridView));
       final board = tester.getRect(find.byKey(const ValueKey('board-content')));
       final rects = _boardStickerRects(tester);
-      expect(rects, hasLength(wide ? 10 : 6));
+      expect(rects, hasLength(sides ? 10 : 6));
       for (final rect in rects) {
         expect(rect.overlaps(grid), isFalse);
         expect(rect.overlaps(board), isFalse);

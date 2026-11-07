@@ -87,3 +87,12 @@ required_evidence:
 - `flutter analyze`, `flutter test`, `flutter test --platform chrome test/web`
 - `tool/build_crazygames.sh`, `tool/build_gamepix.sh`
 - `node <harness-lab>/dist/index.js audit . --format md`
+
+### 검증 결과
+2026-11-07, 기준 커밋 ae97828 이후 구현.
+- `flutter analyze` 이슈 없음. `flutter test` 226개 통과(`test/meta_stickers_test.dart`, `test/decor_stickers_test.dart` 포함). `flutter test --platform chrome test/web` 16개 통과.
+- `tool/build_crazygames.sh`, `tool/build_gamepix.sh` 자체 검사 통과. `flutter build web --release --base-href /MergeCamp/` 성공.
+- harness audit: Critical 0. 남은 경고는 이 명세와 무관한 기존 항목(workflow/maintenance 파일, how-to-play 백링크)이다.
+- 독립 리뷰(code-reviewer): Critical/High 없음. 320x640 꾸미기 헤더 오버플로는 수정했고, 레이아웃 테스트의 9개 크기를 모두 꾸미기 테스트에 넣었다.
+- 알려진 한계: 보드 틀이 물리 픽셀 320만을 넘는 큰 데스크톱 창(예: 1920x1080, DPR 2)에서는 스티커 층을 캐시하지 않고 벡터로 그린다(배경 레이어와 같은 한도). 스티커 레인 때문에 높이가 제한된 가로 화면에서는 보드가 레인 두 개만큼 작아진다(1280x720에서 약 620 → 561px).
+- 측정하지 못한 것: 모바일 프레임 시간 재측정, 실기기(Android Chrome, iPhone Safari).
