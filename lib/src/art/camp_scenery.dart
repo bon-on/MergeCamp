@@ -75,7 +75,12 @@ class _CampSceneryState extends State<CampScenery>
       children: [
         RepaintBoundary(
           child: CustomPaint(
-            painter: _StillPainter(_SkyPainter(palette), 'sky', dpr),
+            painter: _StillPainter(
+              _SkyPainter(palette),
+              'sky',
+              palette.theme,
+              dpr,
+            ),
           ),
         ),
         RepaintBoundary(
@@ -83,7 +88,12 @@ class _CampSceneryState extends State<CampScenery>
         ),
         RepaintBoundary(
           child: CustomPaint(
-            painter: _StillPainter(_LandPainter(palette), 'land', dpr),
+            painter: _StillPainter(
+              _LandPainter(palette),
+              'land',
+              palette.theme,
+              dpr,
+            ),
           ),
         ),
         RepaintBoundary(
@@ -98,34 +108,31 @@ class _CampSceneryState extends State<CampScenery>
 /// theme and pixel ratio when [ArtRasterCache.enabled] (web), so animating
 /// layers above it do not replay hundreds of tree paths every frame.
 class _StillPainter extends CustomPainter {
-  _StillPainter(this.inner, this.layer, this.devicePixelRatio);
+  _StillPainter(this.inner, this.layer, this.theme, this.devicePixelRatio);
 
   final CustomPainter inner;
   final String layer;
+  final CampTheme theme;
   final double devicePixelRatio;
 
-  // Two layers; room for a theme switch or a resize without thrashing.
-  static final ArtRasterCache _rasters = ArtRasterCache(maxEntries: 4);
+  // Only the two layers on screen: full-screen images are large (about
+  // 12 MB each at 390x844, DPR 3), so a theme switch evicts the old pair.
+  static final ArtRasterCache _rasters = ArtRasterCache(maxEntries: 2);
 
-  CampTheme get _theme => switch (inner) {
-    _SkyPainter(:final palette) => palette.theme,
-    _LandPainter(:final palette) => palette.theme,
-    _ => CampTheme.summer,
-  };
+  /// Bigger layers (large desktop windows) are drawn as vectors; desktops
+  /// have the CPU headroom and the images would cost too much memory.
+  static const int maxPixels = 3200000;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = (size.width * devicePixelRatio).ceil();
     final h = (size.height * devicePixelRatio).ceil();
-    if (!ArtRasterCache.enabled ||
-        w <= 0 ||
-        h <= 0 ||
-        w > ArtRasterCache.maxSide ||
-        h > ArtRasterCache.maxSide) {
+    if (!ArtRasterCache.enabled || w <= 0 || h <= 0 || w * h > maxPixels) {
       inner.paint(canvas, size);
       return;
     }
-    final image = _rasters.image((layer, _theme, w, h), w, h, (c) {
+    final key = (layer, theme, size.width, size.height, devicePixelRatio);
+    final image = _rasters.image(key, w, h, (c) {
       c.scale(w / size.width, h / size.height);
       inner.paint(c, size);
     });
@@ -139,9 +146,11 @@ class _StillPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StillPainter old) =>
-      old.inner.shouldRepaint(inner) ||
       old.layer != layer ||
-      old.devicePixelRatio != devicePixelRatio;
+      old.inner.runtimeType != inner.runtimeType ||
+      old.theme != theme ||
+      old.devicePixelRatio != devicePixelRatio ||
+      old.inner.shouldRepaint(inner);
 }
 
 /// Reference length so trees and suns scale on both landscape and portrait.

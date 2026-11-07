@@ -28,12 +28,15 @@ void main() {
 
       final a = cache.image('a', 4, 4, paint);
       expect(a.width, 4);
+      final first = a;
       expect(identical(cache.image('a', 4, 4, paint), a), isTrue);
       expect(paints, 1);
-      cache.image('b', 4, 4, paint);
+      final b = cache.image('b', 4, 4, paint);
       cache.image('a', 4, 4, paint); // 'a' is now the most recent
       cache.image('c', 4, 4, paint); // evicts 'b'
       expect(cache.length, 2);
+      expect(b.debugDisposed, isTrue);
+      expect(first.debugDisposed, isFalse);
       expect(paints, 3);
       cache.image('a', 4, 4, paint);
       expect(paints, 3);
@@ -41,6 +44,7 @@ void main() {
       expect(paints, 4);
       cache.clear();
       expect(cache.length, 0);
+      expect(first.debugDisposed, isTrue);
     });
   });
 
@@ -91,7 +95,12 @@ void main() {
     tester.view.physicalSize = const Size(200, 200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    Future<List<int>> render(bool cached, int tier) async {
+    Future<List<int>> render(
+      bool cached,
+      int tier, {
+      bool showBadge = true,
+      bool silhouette = false,
+    }) async {
       ArtRasterCache.enabled = cached;
       await tester.pumpWidget(
         Directionality(
@@ -99,9 +108,14 @@ void main() {
           child: Align(
             alignment: Alignment.topLeft,
             child: SizedBox.square(
-              key: ValueKey('$cached-$tier'),
+              key: ValueKey('$cached-$tier-$showBadge-$silhouette'),
               dimension: 64,
-              child: CampTileArt(tier: tier, animate: false),
+              child: CampTileArt(
+                tier: tier,
+                animate: false,
+                showBadge: showBadge,
+                silhouette: silhouette,
+              ),
             ),
           ),
         ),
@@ -131,6 +145,18 @@ void main() {
       }
       // Same art; only anti-aliasing and resampling may differ slightly.
       expect(total / vector.length, lessThan(2.0), reason: 'tier $tier');
+    }
+    // Badge and silhouette variants get their own cache entries.
+    final plain = await render(true, 3);
+    for (final variant in [
+      await render(true, 3, showBadge: false),
+      await render(true, 3, silhouette: true),
+    ]) {
+      var total = 0;
+      for (var i = 0; i < plain.length; i++) {
+        total += (plain[i] - variant[i]).abs();
+      }
+      expect(total, greaterThan(0));
     }
     await tester.pumpWidget(const SizedBox());
   });
