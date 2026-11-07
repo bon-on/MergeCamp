@@ -1,0 +1,76 @@
+---
+id: feature-mobile-perf
+title: 모바일 웹에서 머지/연쇄 순간의 프레임 끊김 줄이기
+status: active
+owner: games
+related_adrs:
+  - adr-merge-camp-flutter-foundation
+  - adr-merge-camp-crazygames-web
+related_contracts:
+  - contract-merge-camp-crazygames
+required_evidence:
+  - flutter-analyze
+  - flutter-tests
+  - web-build
+  - harness-audit
+---
+
+# 기능 명세: 모바일 웹 머지/연쇄 프레임 끊김 줄이기
+
+## Problem
+CrazyGames iframe 안의 휴대폰 브라우저에서 "캠프가 머지될 때 게임이 살짝 버벅인다"는 보고가 있었다.
+측정해 보니 머지 연출만의 문제가 아니라 평상시 프레임 자체가 이미 예산(16.7ms)을 넘고 있었다.
+Flutter 웹(CanvasKit)에는 네이티브 엔진 같은 래스터 캐시가 없어서, 배경 구름이나 모닥불 루프 같은 애니메이션이 하나라도 돌면
+매 프레임 화면 전체의 벡터 그림(나무 수백 개의 경로, 타일마다 그라데이션 카드와 일러스트)을 처음부터 다시 그린다.
+그 위에 머지 연출(흡수 타일, 파티클, 팝업, 연쇄 배너, 발견 배너)이 더해지면 프레임이 더 밀린다.
+
+## Scope
+- 포함: 정적 벡터 그림을 한 번만 이미지로 래스터화해 재사용하는 작은 LRU 캐시(`lib/src/art/art_raster_cache.dart`).
+  - 움직이지 않는 타일(루프 없는 티어, 정적 모드, 연출용 복사본, 다음 타일, 도감)은 타일 전체를 이미지로 그린다.
+  - 루프가 있는 타일은 카드(그라데이션, 광원, 베벨, 테두리)만 이미지로 그리고 일러스트와 배지는 계속 벡터로 그린다.
+  - 배경의 하늘/언덕·숲 레이어는 크기·테마·픽셀 비율별 이미지 하나로, 흘러가는 구름은 구름별 스프라이트 이미지로 그린다.
+  - 캐시는 웹에서만 켠다(`ArtRasterCache.enabled = kIsWeb`). 네이티브 엔진은 자체 래스터 캐시가 있어 동작을 바꾸지 않는다.
+- 제외: 그림, 연출 타이밍, 규칙, 효과음, 레이아웃 변경. 새 패키지. 렌더러(CanvasKit) 변경.
+
+## Acceptance Criteria
+- 같은 시나리오(시드된 이어하기 판, 3칸 머지 → x3 연쇄(발견 배너, 미션 토스트 포함) → 일반 배치)에서
+  휴대폰 에뮬레이션(390x844, DPR 3, 터치, CPU 4배 감속) 헤드리스 Chrome으로 잰 프레임 메인 스레드 비용의
+  p50이 평상시와 머지/연쇄 구간 모두 이전 빌드보다 줄어든다(같은 시각에 번갈아 잰 쌍 비교).
+- 캐시를 켠 정적 타일은 벡터로 그린 타일과 픽셀 차이가 안티에일리어싱 수준(채널 평균 절대차 2 미만)이다.
+- 모든 테마, 정적/애니메이션 모드에서 캐시 경로가 예외 없이 그려진다.
+- 캐시 항목 수는 제한되고 오래된 이미지는 해제된다. 4096px을 넘는 그림은 캐시하지 않고 벡터로 그린다.
+- 기존 테스트, 웹 빌드, CrazyGames/GamePix 번들 자체 점검이 통과한다.
+
+## Constraints
+- 새 의존성 없음. lib 문자열은 영어 ASCII. 규칙과 연출 타이밍은 바꾸지 않는다.
+- 캐시는 그림 키(티어, 테마, 실루엣, 배지, 물리 픽셀 크기)가 같을 때만 재사용한다. 화면 크기나 DPR이 바뀌면 새 키로 다시 그린다.
+
+## Stack notes
+- CanvasKit에서 `Picture.toImageSync`로 만든 이미지는 같은 GPU 컨텍스트에서 그려지며, 이미 기록된 Picture는 이미지 참조를 따로 가지므로 LRU에서 내보낼 때 `dispose`해도 안전하다.
+- 측정 하네스(저장소 밖 스크래치 스크립트): 정적 서버로 `build/crazygames`를 띄우고, `--mute-audio`와 일회용 프로필의 헤드리스 Chrome을 CDP로 조작한다.
+  CrazyGames SDK URL은 차단해 SDK 없는 경로로 돌고, `flutter.camp_progress_v1`에 이어하기 판을 시드한다.
+  지표 COST는 devtools trace에서 requestAnimationFrame을 실행한 메인 스레드 작업의 길이(Flutter 빌드/레이아웃/페인트 + CanvasKit 래스터 제출)이다.
+
+## Evidence
+- `flutter analyze`, `flutter test`, `flutter test --platform chrome test/web`
+- `flutter build web --release --base-href /MergeCamp/`, `tool/build_crazygames.sh`, `tool/build_gamepix.sh`
+- `node <harness-lab>/dist/index.js audit . --format md`
+- 측정 결과는 아래 표에 남긴다.
+
+### 측정 결과
+2026-11-07, 헤드리스 Chrome(ANGLE Metal), 390x844 DPR 3 터치, CPU 4배 감속, 효과음 음소거 플래그, 일회용 프로필.
+이전(HEAD fad3152)과 이후 빌드를 같은 시각에 번갈아 4회씩 실행했고, 값은 실행별 값의 중앙값이다(단위 ms, 프레임 메인 스레드 비용).
+측정 중 같은 기계에서 다른 무거운 프로그램이 돌고 있어 절대값은 실제보다 크고 흔들린다. 쌍 비교로만 읽는다.
+
+| 구간 | 이전 p50 / p95 / max | 이후 p50 / p95 / max | 50ms 초과 프레임 수 (이전 → 이후) |
+|---|---|---|---|
+| 평상시 2초 | 48.5 / 60.8 / 64.5 | 23.1 / 30.4 / 34.5 | 9.5 → 0 |
+| 3칸 머지 1.8초 | 56.2 / 163.6 / 223.1 | 30.5 / 88.7 / 123.4 | 18.5 → 3 |
+| x3 연쇄 2.8초 | 54.4 / 136.8 / 214.6 | 37.1 / 124.4 / 232.6 | 20.5 → 9 |
+| 일반 배치 1.2초 | 42.5 / 69.2 / 75.0 | 30.3 / 54.3 / 72.8 | 6 → 2.5 |
+
+- 원인 근거: 이전 빌드의 평상시 CPU 프로파일에서 canvaskit.wasm이 약 60%, Dart 코드가 약 8%였다(장면 전체 재래스터화).
+  배경 애니메이션을 끄면 평상시 비용이 사라지고, 정지 배경/배경 제거 실험에서 정적 배경 레이어와 구름이 각각 비용을 보탰다.
+  캐시 적용 후 연쇄 구간 프로파일에서는 루프 타일(Cook Fire 등)의 벡터 그리기가 Dart 비용의 약 16%로 다음 큰 몫이었고, 그래서 루프 타일의 카드도 캐시했다.
+- 남은 비용: 연쇄 구간 max는 그대로다. 배치 순간 화면 전체 rebuild/layout 한 프레임과, 새 연출을 처음 그릴 때의 WebGL 셰이더 컴파일(getShaderParameter)이 한 번씩 튀는 프레임이다.
+- 실기기(중급 Android Chrome, iPhone Safari)에서는 측정하지 못했다.
