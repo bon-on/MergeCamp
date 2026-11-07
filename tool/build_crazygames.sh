@@ -46,6 +46,17 @@ fi
 # Debug symbol files are not needed at runtime.
 find "$OUT" -name '*.symbols' -delete
 
+# The build config only uses the dart2js CanvasKit renderer, so the skwasm and
+# wimp engine variants are never fetched. Dropping them keeps the zip small
+# enough for browser-driven uploads.
+rm -f "$OUT"/canvaskit/skwasm*.js "$OUT"/canvaskit/skwasm*.wasm \
+  "$OUT"/canvaskit/wimp.js "$OUT"/canvaskit/wimp.wasm
+if ! grep -q '"renderer":"canvaskit"' "$OUT/flutter_bootstrap.js" ||
+  grep -q '"renderer":"skwasm"' "$OUT/flutter_bootstrap.js"; then
+  echo "error: bootstrap does not use the CanvasKit renderer only" >&2
+  exit 1
+fi
+
 file_count=$(find "$OUT" -type f | wc -l | tr -d ' ')
 total_kb=$(du -sk "$OUT" | cut -f1)
 if (( file_count > 1500 )); then
