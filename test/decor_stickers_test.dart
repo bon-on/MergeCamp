@@ -329,11 +329,20 @@ void main() {
     expect(store.value.stickersSeen, 1);
     expect(store.value.stickerSlots.toJson(), {'0': 'pennant'});
     expect(_boardLayer(tester).slots.at(0), 'pennant');
-    // The first move keeps it; a later load does not place it again.
+    // The first move keeps it.
     await tester.tap(_cell(0));
     await tester.pump();
     expect(store.value.stickerSlots.toJson(), {'0': 'pennant'});
     expect(store.value.activeRun, isNotNull);
+    await tester.pump(const Duration(seconds: 3));
+
+    // Taken off and reloaded: the marker is saved, so it is not re-placed.
+    final saved = store.value.withoutSticker(0);
+    await tester.pumpWidget(const SizedBox());
+    final (_, reloaded) = await _pump(tester, progress: saved);
+    expect(reloaded.value.stickerSlots.isEmpty, isTrue);
+    expect(reloaded.value.stickersSeen, 1);
+    expect(find.textContaining('ready to place'), findsNothing);
     await tester.pump(const Duration(seconds: 3));
   });
 
