@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../meta/camp_theme.dart';
+import 'art_raster_cache.dart';
 import 'camp_palette.dart';
 
 /// Full-bleed forest background for a [CampTheme]: sky, sun or moon, two hill
@@ -68,20 +69,79 @@ class _CampSceneryState extends State<CampScenery>
   @override
   Widget build(BuildContext context) {
     final palette = CampPalette.of(widget.theme);
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return Stack(
       fit: StackFit.expand,
       children: [
-        RepaintBoundary(child: CustomPaint(painter: _SkyPainter(palette))),
         RepaintBoundary(
-          child: CustomPaint(painter: _SkyMotionPainter(palette, _time)),
+          child: CustomPaint(
+            painter: _StillPainter(_SkyPainter(palette), 'sky', dpr),
+          ),
         ),
-        RepaintBoundary(child: CustomPaint(painter: _LandPainter(palette))),
+        RepaintBoundary(
+          child: CustomPaint(painter: _SkyMotionPainter(palette, _time, dpr)),
+        ),
+        RepaintBoundary(
+          child: CustomPaint(
+            painter: _StillPainter(_LandPainter(palette), 'land', dpr),
+          ),
+        ),
         RepaintBoundary(
           child: CustomPaint(painter: _AirPainter(palette, _time)),
         ),
       ],
     );
   }
+}
+
+/// Draws a static [inner] painter from an image rasterized once per size,
+/// theme and pixel ratio when [ArtRasterCache.enabled] (web), so animating
+/// layers above it do not replay hundreds of tree paths every frame.
+class _StillPainter extends CustomPainter {
+  _StillPainter(this.inner, this.layer, this.devicePixelRatio);
+
+  final CustomPainter inner;
+  final String layer;
+  final double devicePixelRatio;
+
+  // Two layers; room for a theme switch or a resize without thrashing.
+  static final ArtRasterCache _rasters = ArtRasterCache(maxEntries: 4);
+
+  CampTheme get _theme => switch (inner) {
+    _SkyPainter(:final palette) => palette.theme,
+    _LandPainter(:final palette) => palette.theme,
+    _ => CampTheme.summer,
+  };
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = (size.width * devicePixelRatio).ceil();
+    final h = (size.height * devicePixelRatio).ceil();
+    if (!ArtRasterCache.enabled ||
+        w <= 0 ||
+        h <= 0 ||
+        w > ArtRasterCache.maxSide ||
+        h > ArtRasterCache.maxSide) {
+      inner.paint(canvas, size);
+      return;
+    }
+    final image = _rasters.image((layer, _theme, w, h), w, h, (c) {
+      c.scale(w / size.width, h / size.height);
+      inner.paint(c, size);
+    });
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.low,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_StillPainter old) =>
+      old.inner.shouldRepaint(inner) ||
+      old.layer != layer ||
+      old.devicePixelRatio != devicePixelRatio;
 }
 
 /// Reference length so trees and suns scale on both landscape and portrait.
@@ -227,10 +287,16 @@ class _SkyPainter extends CustomPainter {
 }
 
 class _SkyMotionPainter extends CustomPainter {
-  _SkyMotionPainter(this.palette, this.time) : super(repaint: time);
+  _SkyMotionPainter(this.palette, this.time, [this.devicePixelRatio = 1])
+    : super(repaint: time);
 
   final CampPalette palette;
   final ValueNotifier<double> time;
+  final double devicePixelRatio;
+
+  /// Cloud sprites (one per cloud size, theme and pixel ratio): a moving
+  /// cloud path would otherwise be rasterized again on every frame.
+  static final ArtRasterCache _cloudSprites = ArtRasterCache(maxEntries: 16);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -295,8 +361,52 @@ class _SkyMotionPainter extends CustomPainter {
       final span = size.width + cw * 2;
       final x = ((i + s[0] * 0.6) / count * span + t * speed) % span - cw;
       final y = size.height * (0.05 + ((i * 0.618 + s[1] * 0.2) % 1.0) * 0.24);
-      _cloud(canvas, Offset(x, y), scale, body, shade);
+      _spriteCloud(canvas, Offset(x, y), scale, body, shade);
     }
+  }
+
+  /// Cloud bounds relative to its anchor, in multiples of the cloud scale.
+  static const Rect _cloudBox = Rect.fromLTRB(-0.1, -2.1, 4.5, 0.8);
+
+  void _spriteCloud(
+    Canvas canvas,
+    Offset o,
+    double k,
+    Paint body,
+    Paint shade,
+  ) {
+    final box = Rect.fromLTRB(
+      _cloudBox.left * k,
+      _cloudBox.top * k,
+      _cloudBox.right * k,
+      _cloudBox.bottom * k,
+    );
+    final w = (box.width * devicePixelRatio).ceil();
+    final h = (box.height * devicePixelRatio).ceil();
+    if (!ArtRasterCache.enabled ||
+        w <= 0 ||
+        h <= 0 ||
+        w > ArtRasterCache.maxSide ||
+        h > ArtRasterCache.maxSide) {
+      _cloud(canvas, o, k, body, shade);
+      return;
+    }
+    final image = _cloudSprites.image(
+      (palette.theme, k, body.color, shade.color, devicePixelRatio),
+      w,
+      h,
+      (c) {
+        c.scale(w / box.width, h / box.height);
+        c.translate(-box.left, -box.top);
+        _cloud(c, Offset.zero, k, body, shade);
+      },
+    );
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+      box.shift(o),
+      Paint()..filterQuality = FilterQuality.low,
+    );
   }
 
   void _cloud(Canvas canvas, Offset o, double k, Paint body, Paint shade) {
@@ -336,7 +446,9 @@ class _SkyMotionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SkyMotionPainter old) =>
-      old.palette != palette || old.time != time;
+      old.palette != palette ||
+      old.time != time ||
+      old.devicePixelRatio != devicePixelRatio;
 }
 
 // -------------------------------------------------------------------- land

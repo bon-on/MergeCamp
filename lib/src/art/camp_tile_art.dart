@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../meta/camp_theme.dart';
+import 'art_raster_cache.dart';
 import 'camp_palette.dart';
 
 /// A complete camp tile: rounded card in the tier color, a flat vector
@@ -100,6 +101,7 @@ class _CampTileArtState extends State<CampTileArt>
           silhouette: widget.silhouette,
           showBadge: widget.showBadge,
           animation: _wantsMotion ? _controller : null,
+          devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
         ),
         child: const SizedBox.expand(),
       ),
@@ -114,6 +116,7 @@ class _CampTilePainter extends CustomPainter {
     required this.silhouette,
     required this.showBadge,
     required this.animation,
+    required this.devicePixelRatio,
   }) : super(repaint: animation);
 
   final int tier;
@@ -121,6 +124,11 @@ class _CampTilePainter extends CustomPainter {
   final bool silhouette;
   final bool showBadge;
   final Animation<double>? animation;
+  final double devicePixelRatio;
+
+  /// Rasterized still tiles (see [ArtRasterCache]); a board, the next
+  /// pieces and the effect copies use only a handful of sizes.
+  static final ArtRasterCache _rasters = ArtRasterCache(maxEntries: 64);
 
   static const Color _silhouetteFace = Color(0xFFBAC4C2);
   static const Color _silhouetteShape = Color(0xFF55636A);
@@ -129,14 +137,60 @@ class _CampTilePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
     if (s <= 0) return;
+    final px = (s * devicePixelRatio).ceil();
+    final cache = ArtRasterCache.enabled && px <= ArtRasterCache.maxSide;
+    final dst = Rect.fromLTWH(
+      (size.width - s) / 2,
+      (size.height - s) / 2,
+      s,
+      s,
+    );
+    final src = Rect.fromLTWH(0, 0, px.toDouble(), px.toDouble());
+    final imagePaint = Paint()..filterQuality = FilterQuality.medium;
+    if (cache && animation == null) {
+      // Still tiles: rasterize once, then draw the image every frame.
+      final image = _rasters.image(
+        (tier, palette.theme, silhouette, showBadge, px),
+        px,
+        px,
+        (c) {
+          c.scale(px / s);
+          _paintTile(c, s, 0);
+        },
+      );
+      canvas.drawImageRect(image, src, dst, imagePaint);
+      return;
+    }
     canvas.save();
-    canvas.translate((size.width - s) / 2, (size.height - s) / 2);
+    canvas.translate(dst.left, dst.top);
+    if (cache) {
+      // Looping tiles: the card (gradients, glow, bevel) never moves, so
+      // only the illustration and the badge are drawn as vectors.
+      final card = _rasters.image(
+        ('card', tier, palette.theme, silhouette, px),
+        px,
+        px,
+        (c) {
+          c.scale(px / s);
+          _paintCard(c, s, _baseColor);
+        },
+      );
+      canvas.drawImageRect(card, src, Offset.zero & Size(s, s), imagePaint);
+    }
+    _paintTile(canvas, s, animation?.value ?? 0.0, card: !cache);
+    canvas.restore();
+  }
 
-    final base = silhouette ? _silhouetteFace : palette.tierColor(tier);
-    _paintCard(canvas, s, base);
+  Color get _baseColor =>
+      silhouette ? _silhouetteFace : palette.tierColor(tier);
+
+  /// The whole tile in an [s] x [s] square at the origin; [card] false
+  /// leaves out the card behind the illustration (drawn from the cache).
+  void _paintTile(Canvas canvas, double s, double phase, {bool card = true}) {
+    final base = _baseColor;
+    if (card) _paintCard(canvas, s, base);
 
     final art = Rect.fromLTWH(s * 0.07, s * 0.05, s * 0.86, s * 0.86);
-    final phase = animation?.value ?? 0.0;
     if (silhouette) {
       canvas.saveLayer(
         Rect.fromLTWH(0, 0, s, s),
@@ -160,7 +214,6 @@ class _CampTilePainter extends CustomPainter {
     if (silhouette) canvas.restore();
 
     if (showBadge) _paintBadge(canvas, s, base);
-    canvas.restore();
   }
 
   void _paintCard(Canvas canvas, double s, Color base) {
@@ -303,7 +356,8 @@ class _CampTilePainter extends CustomPainter {
       old.palette != palette ||
       old.silhouette != silhouette ||
       old.showBadge != showBadge ||
-      old.animation != animation;
+      old.animation != animation ||
+      old.devicePixelRatio != devicePixelRatio;
 }
 
 Color _tint(Color c, double t) => Color.lerp(c, const Color(0xFFFFFFFF), t)!;
