@@ -4,6 +4,7 @@ title: GamePix 배포에 SDK 없는 GAMEPIX 빌드 플래그 사용
 status: accepted
 related_specs:
   - feature-merge-camp-gamepix
+  - feature-next-goal-share
 ---
 
 # ADR: GamePix 배포에 SDK 없는 GAMEPIX 빌드 플래그 사용
@@ -16,6 +17,7 @@ related_specs:
 
 - `bool.fromEnvironment('GAMEPIX')`가 켜진 웹 빌드는 기존 `GamePlatform` 인터페이스의 no-op 구현(`NoopGamePlatform.gamePix()`)을 쓴다. 결과 등록은 꺼지고, CrazyGames 어댑터는 `CRAZYGAMES=true`에서만 선택되어 GamePix 번들에서는 트리 셰이킹으로 빠진다.
 - index.html 후처리는 `tool/build_gamepix.sh`가 맡고 SDK script는 주입하지 않는다. 스크립트는 SDK/외부 URL/허브 링크/Roboto/zip 루트 구조를 검사하고 실패하면 중단한다.
+- 결과 공유(feature-next-goal-share)는 GamePix 빌드에서 `shareLink == null`이라 공유 UI가 없다. 링크 상수는 빌드 플래그별 플랫폼 클래스 안에만 두어 GamePix `main.dart.js`에 `crazygames`, `bon-on.github.io` 문자열이 남지 않게 하고, `tool/build_gamepix.sh`가 이를 검사한다.
 - Roboto를 모든 빌드에 번들한다(영어 UI 기준, CJK 제외). 로딩 화면은 `web/index.html`의 CSS로 구현해 모든 웹 빌드가 공유한다.
 
 ## Consequences

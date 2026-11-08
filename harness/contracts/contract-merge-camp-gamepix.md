@@ -4,6 +4,7 @@ title: MergeCamp GamePix 웹 배포 계약
 status: active
 related_specs:
   - feature-merge-camp-gamepix
+  - feature-next-goal-share
 evidence_files:
   - docs/gamepix.md
   - reports/merge-camp-gamepix-verification.md

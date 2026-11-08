@@ -10,6 +10,7 @@ related_specs:
   - feature-crazygames-cloud-save
   - feature-mobile-perf
   - feature-camp-stickers
+  - feature-next-goal-share
 ---
 
 # ADR: CrazyGames 배포에 빌드 플래그와 플랫폼 어댑터 사용
@@ -26,6 +27,7 @@ related_specs:
 - SDK script와 상대 base href는 `web/index.html`에 넣지 않고 `tool/build_crazygames.sh`가 빌드 산출물에만 주입한다.
 - 포털 정책상 외부 링크를 두지 않는다. 빌드 스크립트가 게임 허브 내비게이션 바를 산출물에서 지우고 높이 변수를 0으로 바꾼다. 리더보드 등록 안내는 `GamePlatform.allowsResultRegistration`으로 막는다(CrazyGames 어댑터는 `false`).
 - 웹 효과음은 네이티브 셸 채널 대신 브라우저 오디오 요소로 같은 번들 자산을 재생한다.
+- 결과 공유(feature-next-goal-share)는 `GamePlatform.shareLink`로 빌드별 링크를 정한다. CrazyGames 어댑터는 자체 게임 페이지 URL을 돌려주고, 그 URL은 공유 텍스트 안의 글자일 뿐 게임이 열거나 이동하지 않는다. 그래서 위의 "외부 링크 없음"(플레이어를 포털 밖으로 보내는 링크와 내비게이션 금지)과 충돌하지 않는다고 본다. 공유는 SDK 광고나 gameplay 이벤트를 부르지 않는다.
 
 ## Consequences
 
