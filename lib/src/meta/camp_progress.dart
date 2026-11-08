@@ -33,7 +33,8 @@ class RunOutcome {
     required this.levelAfter,
     required this.newlyUnlockedThemes,
     this.newStickers = const <StickerAward>[],
-  });
+    int? announcedLevel,
+  }) : announcedLevel = announcedLevel ?? levelBefore;
 
   final CampProgress progress;
   final int xpGained;
@@ -45,6 +46,13 @@ class RunOutcome {
 
   /// Stickers of the levels gained, in level order, with their auto slot.
   final List<StickerAward> newStickers;
+
+  /// Highest level already announced before the run ended: [levelBefore],
+  /// or higher when the welcome run levelled up mid-run.
+  final int announcedLevel;
+
+  /// The run reached a level that was not announced yet.
+  bool get announcesLevelUp => levelAfter > announcedLevel;
 }
 
 /// Saved meta progress: best score, camp album, camp XP, chosen theme and
@@ -73,6 +81,7 @@ class CampProgress {
     this.activeRun,
     this.stickerSlots = const StickerSlots.empty(),
     this.stickersSeen,
+    this.welcomeRun = false,
   });
 
   const CampProgress.initial()
@@ -82,6 +91,7 @@ class CampProgress {
       activeRun = null,
       stickerSlots = const StickerSlots.empty(),
       stickersSeen = null,
+      welcomeRun = false,
       selectedTheme = CampTheme.summer;
 
   /// Highest camp tier that has an album entry.
@@ -93,6 +103,14 @@ class CampProgress {
 
   /// Placements a run needs before it earns [participationXp].
   static const int participationMinPlacements = 5;
+
+  /// One-time XP for a brand-new player's first merge
+  /// (feature-first-minute-rewards). With the first starter missions it
+  /// reaches [welcomeLevel] during the first run.
+  static const int welcomeBonusXp = 150;
+
+  /// The only level that can be reached mid-run, in the welcome run.
+  static const int welcomeLevel = 2;
 
   final int bestScore;
   final Set<int> discoveredTiers;
@@ -109,6 +127,10 @@ class CampProgress {
   /// in saves from before stickers existed.
   final int? stickersSeen;
 
+  /// Set from the welcome bonus until that player's first run is settled;
+  /// while set the run can level up to [welcomeLevel] mid-run.
+  final bool welcomeRun;
+
   CampProgress withActiveRun(Map<String, dynamic>? run) => CampProgress(
     bestScore: bestScore,
     discoveredTiers: Set.unmodifiable(discoveredTiers),
@@ -117,6 +139,7 @@ class CampProgress {
     activeRun: run == null ? null : Map.unmodifiable(run),
     stickerSlots: stickerSlots,
     stickersSeen: stickersSeen,
+    welcomeRun: welcomeRun,
   );
 
   /// XP needed to go from [level] to the next one.
@@ -134,6 +157,26 @@ class CampProgress {
   /// XP awarded for a run's score.
   static int xpForScore(int score) => score <= 0 ? 0 : score ~/ 10;
 
+  /// XP a run earns when it is settled (also used for the live XP of the
+  /// welcome run): score XP, mission XP and participation.
+  static int runXp(RunSummary summary) {
+    if (summary.placements <= 0) return 0;
+    return xpForScore(summary.score) +
+        (summary.missionXp < 0 ? 0 : summary.missionXp) +
+        (summary.placements >= participationMinPlacements &&
+                summary.mergeCount > 0
+            ? participationXp
+            : 0);
+  }
+
+  /// Level reached with [xp] total XP.
+  static int levelForXp(int xp) => CampProgress(
+    bestScore: 0,
+    discoveredTiers: const <int>{1},
+    totalXp: xp,
+    selectedTheme: CampTheme.summer,
+  ).level;
+
   int get level => _split().$1;
   int get xpIntoLevel => _split().$2;
   int get xpForNextLevel => xpToAdvance(level);
@@ -150,10 +193,54 @@ class CampProgress {
 
   bool isThemeUnlocked(CampTheme theme) => level >= theme.requiredLevel;
 
-  List<Sticker> get ownedStickers => Sticker.ownedAt(level);
+  /// Level whose stickers are owned: [level], or [welcomeLevel] once the
+  /// welcome run levelled up mid-run (its XP is only saved at run end).
+  int get stickerLevel {
+    final seen = (stickersSeen ?? 0).clamp(0, welcomeLevel);
+    return level > seen ? level : seen;
+  }
+
+  List<Sticker> get ownedStickers => Sticker.ownedAt(stickerLevel);
 
   /// Owned stickers not stuck on a slot.
-  List<Sticker> get stickerTray => stickerSlots.trayAt(level);
+  List<Sticker> get stickerTray => stickerSlots.trayAt(stickerLevel);
+
+  /// Nothing earned yet and no welcome bonus: the next first merge gets
+  /// [welcomeBonusXp].
+  bool get welcomeBonusDue => totalXp == 0 && bestScore == 0 && !welcomeRun;
+
+  /// Grants the one-time welcome bonus and starts the welcome run.
+  CampProgress withWelcomeBonus() {
+    if (!welcomeBonusDue) return this;
+    return _copy(totalXp: totalXp + welcomeBonusXp, welcomeRun: true);
+  }
+
+  /// Display copy with [runXp] not yet saved XP added (HUD in the welcome
+  /// run); never saved.
+  CampProgress withPendingXp(int runXp) =>
+      runXp <= 0 ? this : _copy(totalXp: totalXp + runXp);
+
+  /// Mid-run level-up of the welcome run: with [runXp] earned so far, the
+  /// levels up to [welcomeLevel] that were not announced get their sticker
+  /// stuck on the first empty slot, and [stickersSeen] moves up so the run's
+  /// end neither repeats nor double counts them. Returns this progress when
+  /// nothing is due; [awards] lists what was given.
+  CampProgress withLiveLevelUp(int runXp, {List<StickerAward>? awards}) {
+    if (!welcomeRun) return this;
+    final live = levelForXp(totalXp + (runXp < 0 ? 0 : runXp));
+    final target = live < welcomeLevel ? live : welcomeLevel;
+    final from = stickerLevel;
+    if (target <= from) return this;
+    var slots = stickerSlots;
+    for (var l = from + 1; l <= target; l++) {
+      final sticker = Sticker.forLevel(l);
+      if (sticker == null) break;
+      final slot = slots.firstEmpty;
+      if (slot != null) slots = slots.put(sticker.id, slot);
+      awards?.add(StickerAward(sticker, slot));
+    }
+    return _copy(stickerSlots: slots, stickersSeen: target);
+  }
 
   /// No saved sticker marker and nothing earned yet: a first-ever load.
   bool get _isNewPlayer =>
@@ -188,7 +275,7 @@ class CampProgress {
 
   /// Sticks owned sticker [id] on [slot] (swapping, see [StickerSlots.put]).
   CampProgress withSticker(String id, int slot) {
-    if (!(Sticker.byId(id)?.isOwnedAt(level) ?? false)) return this;
+    if (!(Sticker.byId(id)?.isOwnedAt(stickerLevel) ?? false)) return this;
     final next = stickerSlots.put(id, slot);
     return identical(next, stickerSlots) ? this : _copy(stickerSlots: next);
   }
@@ -213,6 +300,8 @@ class CampProgress {
 
   RunOutcome applyRun(RunSummary summary) {
     final levelBefore = level;
+    final seen = stickersSeen ?? 0;
+    final announced = seen > levelBefore ? seen : levelBefore;
     if (summary.placements <= 0) {
       return RunOutcome(
         progress: withActiveRun(null),
@@ -224,34 +313,30 @@ class CampProgress {
         newlyUnlockedThemes: const <CampTheme>[],
       );
     }
-    final xp =
-        xpForScore(summary.score) +
-        (summary.missionXp < 0 ? 0 : summary.missionXp) +
-        (summary.placements >= participationMinPlacements &&
-                summary.mergeCount > 0
-            ? participationXp
-            : 0);
+    final xp = runXp(summary);
     final isNewBest = summary.score > bestScore;
     var next = withActiveRun(null)._copy(
       bestScore: isNewBest ? summary.score : bestScore,
       totalXp: totalXp + xp,
+      welcomeRun: false,
     );
     // The screen records every camp the moment it is built; the run only
     // guarantees its highest camp is in the album.
     next = next.withDiscovered(summary.highestTier);
     final levelAfter = next.level;
     // Each level gained awards its sticker, stuck on the first empty slot
-    // in level order (or left in the tray when the slots are full).
+    // in level order (or left in the tray when the slots are full). Levels
+    // already announced mid-run (welcome run) are skipped.
     final awards = <StickerAward>[];
     var slots = next.stickerSlots;
-    for (var l = levelBefore + 1; l <= levelAfter; l++) {
+    for (var l = announced + 1; l <= levelAfter; l++) {
       final sticker = Sticker.forLevel(l);
       if (sticker == null) break;
       final slot = slots.firstEmpty;
       if (slot != null) slots = slots.put(sticker.id, slot);
       awards.add(StickerAward(sticker, slot));
     }
-    if (levelAfter > levelBefore) {
+    if (levelAfter > announced) {
       next = next._copy(
         stickerSlots: slots,
         stickersSeen: levelAfter > (stickersSeen ?? 0)
@@ -268,11 +353,12 @@ class CampProgress {
       levelAfter: levelAfter,
       newlyUnlockedThemes: [
         for (final theme in CampTheme.values)
-          if (levelBefore < theme.requiredLevel &&
+          if (announced < theme.requiredLevel &&
               levelAfter >= theme.requiredLevel)
             theme,
       ],
       newStickers: awards,
+      announcedLevel: announced,
     );
   }
 
@@ -284,6 +370,7 @@ class CampProgress {
     if (activeRun != null) 'activeRun': activeRun,
     'stickerSlots': stickerSlots.toJson(),
     if (stickersSeen != null) 'stickersSeen': stickersSeen,
+    if (welcomeRun) 'welcomeRun': true,
   };
 
   /// Tolerant parser: any missing or invalid field falls back on its own.
@@ -318,14 +405,17 @@ class CampProgress {
     );
     progress = progress.withTheme(theme);
     final seen = json['stickersSeen'];
-    return progress._copy(
-      stickerSlots: StickerSlots.fromJson(
-        json['stickerSlots'],
-        level: progress.level,
-      ),
+    progress = progress._copy(
       stickersSeen: seen is num && seen.isFinite && seen >= 0 && seen <= 1000
           ? seen.toInt()
           : null,
+      welcomeRun: json['welcomeRun'] == true,
+    );
+    return progress._copy(
+      stickerSlots: StickerSlots.fromJson(
+        json['stickerSlots'],
+        level: progress.stickerLevel,
+      ),
     );
   }
 
@@ -336,6 +426,7 @@ class CampProgress {
     CampTheme? selectedTheme,
     StickerSlots? stickerSlots,
     int? stickersSeen,
+    bool? welcomeRun,
   }) {
     return CampProgress(
       bestScore: bestScore ?? this.bestScore,
@@ -347,6 +438,7 @@ class CampProgress {
       activeRun: activeRun,
       stickerSlots: stickerSlots ?? this.stickerSlots,
       stickersSeen: stickersSeen ?? this.stickersSeen,
+      welcomeRun: welcomeRun ?? this.welcomeRun,
     );
   }
 }
