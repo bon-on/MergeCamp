@@ -9,7 +9,7 @@ import '../../meta/camp_progress.dart';
 import '../../meta/stickers.dart';
 import 'camp_ui.dart';
 
-/// Decor screen: a board-shaped frame with the 10 sticker slots and the
+/// Decor screen: a board-shaped frame with the 16 sticker slots and the
 /// sticker tray (owned stickers; locked ones as silhouettes with their
 /// level). Pick a sticker, then a slot: it sticks there, swapping with a
 /// sticker already on it. Tapping a stuck sticker picks it; tapping it
@@ -37,7 +37,12 @@ class DecorOverlay extends StatefulWidget {
 }
 
 class _DecorOverlayState extends State<DecorOverlay> {
-  final FocusNode _focusNode = FocusNode(debugLabel: 'DecorOverlay');
+  /// Handles the keys; not a traversal stop itself, or arrows could land
+  /// on the whole overlay instead of a sticker or slot.
+  final FocusNode _focusNode = FocusNode(
+    debugLabel: 'DecorOverlay',
+    skipTraversal: true,
+  );
 
   /// The first tray sticker (always owned) takes focus on open, so arrows
   /// and Enter work right away.
@@ -256,43 +261,56 @@ class _DecorOverlayState extends State<DecorOverlay> {
   }
 
   Widget _frame(double size, CampPalette palette) {
-    final lane = size * 0.17;
+    // Narrow enough lanes that five slots fit side by side in a row
+    // (StickerSlotGeometry keeps row neighbours apart up to 0.164).
+    final lane = size * 0.15;
     final board = size - lane * 2;
     final d = StickerSlotGeometry.diameter(lane);
-    return SizedBox.square(
-      key: const ValueKey('decor-frame'),
-      dimension: size,
-      child: Stack(
-        children: [
-          Positioned(
-            left: lane,
-            top: lane,
-            width: board,
-            height: board,
-            child: _MiniBoard(palette: palette),
-          ),
-          for (var slot = 0; slot < StickerSlots.count; slot++)
-            Positioned.fromRect(
-              rect: Rect.fromCenter(
-                center:
-                    Offset(lane, lane) +
-                    StickerSlotGeometry.center(slot, board, lane),
-                width: d,
-                height: d,
-              ),
-              child: _SlotButton(
-                slot: slot,
-                sticker: _slots.at(slot) == null
-                    ? null
-                    : Sticker.byId(_slots.at(slot)!),
-                selected: _selected != null && _slots.at(slot) == _selected,
-                armed: _selected != null,
-                palette: palette,
-                animate: widget.animateArt,
-                onTap: () => _tapSlot(slot),
-              ),
+    // Tap targets wider than the sticker, up to the gap to a neighbour.
+    final target = math.max(
+      d,
+      math.min(lane, board * StickerSlotGeometry.rowSpacing),
+    );
+    // Its own traversal group: Tab walks all slots in reading order (top
+    // row, the left/right pairs, bottom row) before moving on to the tray.
+    return FocusTraversalGroup(
+      policy: ReadingOrderTraversalPolicy(),
+      child: SizedBox.square(
+        key: const ValueKey('decor-frame'),
+        dimension: size,
+        child: Stack(
+          children: [
+            Positioned(
+              left: lane,
+              top: lane,
+              width: board,
+              height: board,
+              child: _MiniBoard(palette: palette),
             ),
-        ],
+            for (var slot = 0; slot < StickerSlots.count; slot++)
+              Positioned.fromRect(
+                rect: Rect.fromCenter(
+                  center:
+                      Offset(lane, lane) +
+                      StickerSlotGeometry.center(slot, board, lane),
+                  width: target,
+                  height: target,
+                ),
+                child: _SlotButton(
+                  slot: slot,
+                  diameter: d,
+                  sticker: _slots.at(slot) == null
+                      ? null
+                      : Sticker.byId(_slots.at(slot)!),
+                  selected: _selected != null && _slots.at(slot) == _selected,
+                  armed: _selected != null,
+                  palette: palette,
+                  animate: widget.animateArt,
+                  onTap: () => _tapSlot(slot),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -311,23 +329,26 @@ class _DecorOverlayState extends State<DecorOverlay> {
       children: [
         PanelCaption('Sticker tray', palette: palette),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: spacing,
-          runSpacing: 8,
-          children: [
-            for (final sticker in Sticker.catalog)
-              _TrayTile(
-                sticker: sticker,
-                size: cell,
-                owned: sticker.isOwnedAt(level),
-                placed: _slots.slotOf(sticker.id) != null,
-                selected: _selected == sticker.id,
-                palette: palette,
-                animate: widget.animateArt,
-                focusNode: sticker.level == 1 ? _firstSticker : null,
-                onTap: () => _tapTray(sticker),
-              ),
-          ],
+        FocusTraversalGroup(
+          policy: ReadingOrderTraversalPolicy(),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: 8,
+            children: [
+              for (final sticker in Sticker.catalog)
+                _TrayTile(
+                  sticker: sticker,
+                  size: cell,
+                  owned: sticker.isOwnedAt(level),
+                  placed: _slots.slotOf(sticker.id) != null,
+                  selected: _selected == sticker.id,
+                  palette: palette,
+                  animate: widget.animateArt,
+                  focusNode: sticker.level == 1 ? _firstSticker : null,
+                  onTap: () => _tapTray(sticker),
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -395,6 +416,7 @@ class _MiniBoard extends StatelessWidget {
 class _SlotButton extends StatelessWidget {
   const _SlotButton({
     required this.slot,
+    required this.diameter,
     required this.sticker,
     required this.selected,
     required this.armed,
@@ -404,6 +426,9 @@ class _SlotButton extends StatelessWidget {
   });
 
   final int slot;
+
+  /// Size of the slot circle and sticker, centered in the tap target.
+  final double diameter;
   final Sticker? sticker;
   final bool selected;
 
@@ -429,33 +454,40 @@ class _SlotButton extends StatelessWidget {
           onTap: onTap,
           customBorder: const CircleBorder(),
           highlightShape: BoxShape.circle,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: sticker == null
-                  ? Colors.white.withValues(alpha: armed ? 0.35 : 0.18)
-                  : null,
-              border: sticker == null || selected
-                  ? Border.all(
-                      color: selected || armed
-                          ? palette.accent
-                          : palette.textSecondary.withValues(alpha: 0.5),
-                      width: selected ? 3 : 2,
-                    )
-                  : null,
-            ),
-            child: sticker == null
-                ? Icon(
-                    Icons.add_rounded,
-                    color: palette.textSecondary.withValues(alpha: 0.7),
-                  )
-                : Transform.rotate(
-                    angle: StickerSlotGeometry.tilt(slot),
-                    child: StickerArt(sticker: sticker, sparkle: animate),
-                  ),
+          child: Center(
+            child: SizedBox.square(dimension: diameter, child: _face()),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _face() {
+    final sticker = this.sticker;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: sticker == null
+            ? Colors.white.withValues(alpha: armed ? 0.35 : 0.18)
+            : null,
+        border: sticker == null || selected
+            ? Border.all(
+                color: selected || armed
+                    ? palette.accent
+                    : palette.textSecondary.withValues(alpha: 0.5),
+                width: selected ? 3 : 2,
+              )
+            : null,
+      ),
+      child: sticker == null
+          ? Icon(
+              Icons.add_rounded,
+              color: palette.textSecondary.withValues(alpha: 0.7),
+            )
+          : Transform.rotate(
+              angle: StickerSlotGeometry.tilt(slot),
+              child: StickerArt(sticker: sticker, sparkle: animate),
+            ),
     );
   }
 }

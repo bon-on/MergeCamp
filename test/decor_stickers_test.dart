@@ -195,6 +195,17 @@ void _expectApart(List<Rect> rects) {
   }
 }
 
+/// Slot number of the focused decor slot, or null.
+int? _focusedSlot() {
+  final context = FocusManager.instance.primaryFocus?.context;
+  if (context == null) return null;
+  final key = context.findAncestorWidgetOfExactType<InkResponse>()?.key;
+  if (key is! ValueKey<String> || !key.value.startsWith('decor-slot-')) {
+    return null;
+  }
+  return int.parse(key.value.substring('decor-slot-'.length));
+}
+
 void main() {
   testWidgets('decor screen places, swaps and removes stickers', (
     tester,
@@ -390,6 +401,42 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'PlayAgain');
   });
 
+  for (final size in const [Size(1280, 720), Size(390, 844)]) {
+    testWidgets('Tab walks the decor slots in reading order at $size', (
+      tester,
+    ) async {
+      await _pump(tester, size: size, progress: _progress(level: 3, seen: 3));
+      await tester.tap(find.byTooltip('Decorate'));
+      await tester.pumpAndSettle();
+      // Arrows still cross from the tray into the frame.
+      await tester.sendKeyEvent(
+        size.width > size.height
+            ? LogicalKeyboardKey.arrowLeft
+            : LogicalKeyboardKey.arrowUp,
+      );
+      await tester.pump();
+      expect(_focusedSlot(), isNotNull);
+      // Focused slot after each Tab (-1 for anything else).
+      final seen = <int>[];
+      for (var i = 0; i < 48; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        seen.add(_focusedSlot() ?? -1);
+      }
+      // One unbroken run: top row, then each left/right pair, then the
+      // bottom row, before focus moves on to the tray.
+      final start = seen.indexOf(0);
+      expect(start, isNonNegative);
+      expect(seen.sublist(start, start + StickerSlots.count), [
+        0, 1, 2, 3, 4, 10, 13, 11, 14, 12, 15, 5, 6, 7, 8, 9, //
+      ]);
+      expect(seen[start + StickerSlots.count], -1);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('Decorate Camp'), findsNothing);
+    });
+  }
+
   testWidgets('the board sticker layer is cached per placement', (
     tester,
   ) async {
@@ -498,6 +545,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Decorate Camp'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      // All 16 slots, inside the frame, with tap targets that do not
+      // overlap.
+      final frame = tester.getRect(find.byKey(const ValueKey('decor-frame')));
+      final slots = [
+        for (var slot = 0; slot < StickerSlots.count; slot++)
+          tester.getRect(_slot(slot)),
+      ];
+      _expectApart(slots);
+      for (final rect in slots) {
+        expect(frame.inflate(0.01).contains(rect.topLeft), isTrue);
+        expect(frame.inflate(0.01).contains(rect.bottomRight), isTrue);
+      }
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
 
