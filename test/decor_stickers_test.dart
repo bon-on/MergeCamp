@@ -510,6 +510,9 @@ void main() {
     Size(360, 640),
     Size(640, 480),
     Size(320, 640),
+    // Short narrow windows: lanes narrow so five stickers fit a row.
+    Size(560, 560),
+    Size(600, 500),
   ]) {
     testWidgets('stickers and decor screen fit $size', (tester) async {
       final full = {

@@ -615,14 +615,16 @@ class CampHudLayout extends StatelessWidget {
               final stripHeight = small ? 58.0 : 66.0;
               // Sticker lanes above and below the board; the side lanes
               // only when the board leaves room for them.
-              final lane = (area.maxWidth * 0.1).clamp(24.0, 44.0);
+              final wantedLane = (area.maxWidth * 0.1).clamp(24.0, 44.0);
               final boardSide = math.max(
                 120.0,
                 math.min(
                   area.maxWidth,
-                  area.maxHeight - stripHeight - 10 - lane * 2,
+                  area.maxHeight - stripHeight - 10 - wantedLane * 2,
                 ),
               );
+              // Short windows: narrower lanes so five stickers fit a row.
+              final lane = StickerSlotGeometry.fitLane(boardSide, wantedLane);
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -672,6 +674,8 @@ class _StickerFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Never wider than five stickers per row allow (no-op on big boards).
+    final lane = StickerSlotGeometry.fitLane(board, this.lane);
     final side = showSides ? lane : 0.0;
     final rect = Rect.fromLTWH(side, lane, board, board);
     return SizedBox(

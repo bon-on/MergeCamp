@@ -60,6 +60,11 @@ class StickerSlotGeometry {
 
   /// Sticker diameter in a [lane] wide margin.
   static double diameter(double lane) => lane * 0.86;
+
+  /// [lane], narrowed when needed so that row neighbours around a [board]
+  /// wide square do not overlap (board at least about 4.1 lanes).
+  static double fitLane(double board, double lane) =>
+      math.min(lane, board * rowSpacing / 0.86);
 }
 
 /// One sticker badge: drop shadow, white (common) or gold (rare) border, a
