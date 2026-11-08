@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../art/camp_palette.dart';
 import '../../art/camp_tile_art.dart';
+import '../../art/sticker_art.dart';
 import '../../meta/camp_theme.dart';
+import '../../meta/stickers.dart';
 import '../merge_camp_controller.dart';
 
 /// Plays a one-shot [duration] animation once and then calls [onDone].
@@ -231,11 +233,15 @@ class ToastMessage {
     required this.id,
     required this.text,
     required this.icon,
+    this.sticker,
   });
 
   final int id;
   final String text;
   final IconData icon;
+
+  /// Shown instead of [icon] with a gold outline (level-up rewards).
+  final Sticker? sticker;
 }
 
 /// Short notice ("Mission complete: ...") that slides in and out.
@@ -265,6 +271,7 @@ class _CampToastState extends _OneShotState<CampToast> {
   @override
   Widget build(BuildContext context) {
     final palette = widget.palette;
+    final sticker = widget.message.sticker;
     return IgnorePointer(
       child: AnimatedBuilder(
         animation: controller,
@@ -279,12 +286,16 @@ class _CampToastState extends _OneShotState<CampToast> {
           );
         },
         child: Container(
+          key: sticker == null ? null : const ValueKey('reward-toast'),
           margin: const EdgeInsets.only(top: 6),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
             color: const Color(0xFF2F6B45),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF8BE08F), width: 1.5),
+            border: Border.all(
+              color: sticker == null ? const Color(0xFF8BE08F) : palette.accent,
+              width: sticker == null ? 1.5 : 2.5,
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x44000000),
@@ -296,7 +307,13 @@ class _CampToastState extends _OneShotState<CampToast> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.message.icon, color: palette.accent, size: 20),
+              if (sticker != null)
+                SizedBox.square(
+                  dimension: 34,
+                  child: StickerArt(sticker: sticker),
+                )
+              else
+                Icon(widget.message.icon, color: palette.accent, size: 20),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(

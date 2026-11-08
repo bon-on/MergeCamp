@@ -14,6 +14,7 @@ import '../meta/camp_progress.dart';
 import '../meta/camp_progress_store.dart';
 import '../meta/camp_theme.dart';
 import '../meta/missions.dart';
+import '../meta/stickers.dart';
 import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'how_to_play.dart';
@@ -138,6 +139,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   int _discoveryTier = 0;
   int _toastSerial = 0;
   final List<ToastMessage> _toasts = <ToastMessage>[];
+  // First-run celebrations already shown in this run.
+  final Set<_Milestone> _milestones = <_Milestone>{};
 
   static const int _missionBonusScore = 150;
 
@@ -216,6 +219,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         activeRun: loaded.activeRun,
         stickerSlots: loaded.stickerSlots,
         stickersSeen: loaded.stickersSeen,
+        welcomeRun: loaded.welcomeRun,
       );
     });
     _announceStickers();
@@ -315,6 +319,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _firstRun = false;
       _starterPending = false;
       _practiceRequested = false;
+      // Celebrations the restored run already passed are not repeated.
+      _milestones.clear();
+      if (_controller.mergeCount > 0) _milestones.add(_Milestone.firstMerge);
+      if (_controller.bestMergeChain >= 2) _milestones.add(_Milestone.chain);
     } finally {
       _restoringRun = false;
       controller.dispose();
@@ -571,7 +579,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _chainSerial += 1;
     }
 
-    for (final mission in _missions.update(_controller)) {
+    final missionsDone = _missions.update(_controller);
+    for (final mission in missionsDone) {
       final axe = _controller.grantTrailAxe();
       if (!axe) {
         if (_controller.isGameOver) {
@@ -606,11 +615,103 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _discoveryTier = newest;
       _discoverySerial += 1;
     }
+    _firstMinuteRewards(steps, quiet: missionsDone.isNotEmpty);
   }
 
-  void _toast(String text, IconData icon) {
+  /// Brand-new players only (feature-first-minute-rewards): the welcome
+  /// bonus on the first merge, first-run celebrations and the welcome run's
+  /// mid-run level-up. [quiet] skips the extra sound when a mission sound
+  /// already plays for this placement.
+  void _firstMinuteRewards(List<MergeStep> steps, {bool quiet = false}) {
+    if (!_progressLoaded ||
+        (!_progress.welcomeBonusDue && !_progress.welcomeRun)) {
+      return;
+    }
+    if (steps.isNotEmpty && _milestones.add(_Milestone.firstMerge)) {
+      if (_progress.welcomeBonusDue) {
+        _setProgress(_progress.withWelcomeBonus());
+        _toast(
+          'First merge! Welcome bonus +${CampProgress.welcomeBonusXp} camp XP',
+          Icons.celebration_rounded,
+        );
+        if (!quiet) unawaited(_feedback.mission());
+        quiet = true;
+      }
+    }
+    if (steps.any((step) => step.absorbed.length + 1 >= 4)) {
+      quiet = _celebrate(_Milestone.bigMerge, quiet: quiet);
+    }
+    if (steps.length >= 2) {
+      quiet = _celebrate(_Milestone.chain, quiet: quiet);
+    }
+    _liveLevelUp();
+  }
+
+  /// Shows a first-run celebration once per run; returns whether a sound
+  /// is already playing for this action. A mission completed by the same
+  /// action already celebrates it, so the milestone is only marked as seen
+  /// (its toast would push the mission toast out).
+  bool _celebrate(_Milestone milestone, {bool quiet = false}) {
+    if (!_progressLoaded ||
+        (!_progress.welcomeBonusDue && !_progress.welcomeRun) ||
+        !_milestones.add(milestone) ||
+        quiet) {
+      return quiet;
+    }
+    _toast(milestone.text, Icons.celebration_rounded);
+    if (!quiet) unawaited(_feedback.mission());
+    return true;
+  }
+
+  /// The welcome run reaches Lv 2 mid-run: its sticker is stuck on the
+  /// board and saved at once; the run's XP is still credited at its end.
+  void _liveLevelUp() {
+    if (!_progress.welcomeRun) return;
+    final awards = <StickerAward>[];
+    final next = _progress.withLiveLevelUp(_runXpSoFar, awards: awards);
+    if (identical(next, _progress)) return;
+    _setProgress(next);
+    unawaited(_feedback.levelUp());
+    final sticker = awards.isEmpty ? null : awards.last.sticker;
+    _toast(
+      sticker == null
+          ? 'Level up! Lv ${next.stickerLevel}'
+          : 'Level up! Lv ${next.stickerLevel} - New sticker: ${sticker.name}',
+      Icons.arrow_upward_rounded,
+      sticker: sticker,
+    );
+  }
+
+  RunSummary get _runSummary => RunSummary(
+    score: _controller.score,
+    highestTier: _controller.highestTier,
+    bestChain: _controller.bestMergeChain,
+    placements: _controller.placements,
+    missionXp: _missions.xpEarned,
+    mergeCount: _controller.mergeCount,
+  );
+
+  /// XP the current run would credit if it ended now.
+  int get _runXpSoFar => CampProgress.runXp(_runSummary);
+
+  /// During the welcome run the HUD shows the run's XP live (never past the
+  /// welcome level, which is the only mid-run level-up); saved XP is only
+  /// credited when the run ends.
+  CampProgress get _hudProgress {
+    if (!_progress.welcomeRun || _controller.isGameOver) return _progress;
+    final cap =
+        CampProgress.totalXpForLevel(CampProgress.welcomeLevel + 1) -
+        1 -
+        _progress.totalXp;
+    final pending = _runXpSoFar;
+    return _progress.withPendingXp(pending < cap ? pending : cap);
+  }
+
+  void _toast(String text, IconData icon, {Sticker? sticker}) {
     _toastSerial += 1;
-    _toasts.add(ToastMessage(id: _toastSerial, text: text, icon: icon));
+    _toasts.add(
+      ToastMessage(id: _toastSerial, text: text, icon: icon, sticker: sticker),
+    );
     // Only the latest few stay on screen.
     while (_toasts.length > 2) {
       _toasts.removeAt(0);
@@ -623,18 +724,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (_runApplied) return null;
     _runApplied = true;
     if (_controller.placements <= 0) return null;
-    final outcome = _progress.applyRun(
-      RunSummary(
-        score: _controller.score,
-        highestTier: _controller.highestTier,
-        bestChain: _controller.bestMergeChain,
-        placements: _controller.placements,
-        missionXp: _missions.xpEarned,
-        mergeCount: _controller.mergeCount,
-      ),
-    );
+    final outcome = _progress.applyRun(_runSummary);
     _setProgress(outcome.progress, xpGained: outcome.xpGained);
-    if (outcome.levelAfter > outcome.levelBefore) {
+    if (outcome.announcesLevelUp) {
       unawaited(_feedback.levelUp());
     }
     return outcome;
@@ -705,7 +797,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     } else {
       // Restarting mid-run still counts the run (no-op without placements).
       final outcome = _applyRun();
-      if (outcome != null && outcome.levelAfter > outcome.levelBefore) {
+      if (outcome != null && outcome.announcesLevelUp) {
         _toast(
           'Camp level up! Lv ${outcome.levelAfter}',
           Icons.arrow_upward_rounded,
@@ -725,6 +817,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _report = null;
     _runApplied = false;
     _missions.reset();
+    _milestones.clear();
     _fx.clear();
     _chainLength = 0;
     _controller.restart();
@@ -891,6 +984,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         }
         setState(() {
           _trailAxeMode = false;
+          _celebrate(_Milestone.axe);
         });
       }
       switch (result.action) {
@@ -950,7 +1044,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             controller: _controller,
                             theme: _theme,
                             fx: _fx,
-                            progress: _progress,
+                            progress: _hudProgress,
                             missions: _missions,
                             cursor: _cursor,
                             guidedIndex: _guidedPractice ? _guidedPlot : null,
@@ -1061,6 +1155,18 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       ),
     );
   }
+}
+
+/// First-run celebrations (feature-first-minute-rewards).
+enum _Milestone {
+  firstMerge('First merge!'),
+  bigMerge('Big merge! 4+ camps at once'),
+  chain('First chain!'),
+  axe('Trail Axe cleared a plot!');
+
+  const _Milestone(this.text);
+
+  final String text;
 }
 
 /// The three how-to-play steps (English ASCII; see the tutorial spec).

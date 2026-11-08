@@ -769,7 +769,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
               ),
             ],
           ),
-          if (outcome.levelAfter > outcome.levelBefore)
+          if (outcome.announcesLevelUp)
             Opacity(
               opacity: levelUpShown.clamp(0.0, 1.0),
               child: Padding(

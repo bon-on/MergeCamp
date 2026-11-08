@@ -304,7 +304,7 @@ class _DecorOverlayState extends State<DecorOverlay> {
       40.0,
       78.0,
     );
-    final level = widget.progress.level;
+    final level = widget.progress.stickerLevel;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,

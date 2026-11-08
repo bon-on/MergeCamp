@@ -370,13 +370,22 @@ void main() {
     expect(s.controller.previewTiers, controllerState['previewTiers']);
     expect(s.missions.xpEarned, MissionBoard.xpPerMission);
     expect(_guided, findsNothing);
-    expect(store.value.totalXp, 0, reason: 'nothing settled yet');
+    // Only the one-time welcome bonus of the first merge is saved so far
+    // (feature-first-minute-rewards); the run itself is not settled yet.
+    expect(
+      store.value.totalXp,
+      CampProgress.welcomeBonusXp,
+      reason: 'nothing settled yet',
+    );
 
     // Restart settles the run once, clearing the old snapshot in that write.
     final score = s.controller.score;
     await tester.tap(find.byTooltip('Restart run'));
     await tester.pump();
-    final credited = CampProgress.xpForScore(score) + MissionBoard.xpPerMission;
+    final credited =
+        CampProgress.welcomeBonusXp +
+        CampProgress.xpForScore(score) +
+        MissionBoard.xpPerMission;
     expect(store.value.totalXp, credited);
     expect(s.controller.placements, 0);
     final fresh = store.value.activeRun!;
