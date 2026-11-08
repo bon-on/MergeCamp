@@ -30,13 +30,27 @@ abstract class GamePlatform {
   /// Whether the post-game prompt to submit scores to the Bon-on leaderboard
   /// may be shown. Portal builds keep players on the portal.
   bool get allowsResultRegistration;
+
+  /// Public game page put into shared results (feature-next-goal-share);
+  /// null hides every share action. It is only text in the shared message:
+  /// the game never opens it.
+  String? get shareLink => null;
 }
 
-class NoopGamePlatform extends GamePlatform {
-  const NoopGamePlatform({this.allowsResultRegistration = true});
+/// GitHub Pages (and mobile) game page used in shared results.
+const String pagesShareLink = 'https://bon-on.github.io/MergeCamp/';
 
-  /// GamePix portal build: SDK-free, no ads, no result upload.
-  const NoopGamePlatform.gamePix() : allowsResultRegistration = false;
+class NoopGamePlatform extends GamePlatform {
+  const NoopGamePlatform({
+    this.allowsResultRegistration = true,
+    this.shareLink = pagesShareLink,
+  });
+
+  /// GamePix portal build: SDK-free, no ads, no result upload and no share
+  /// actions (GamePix forbids outbound links).
+  const NoopGamePlatform.gamePix()
+    : allowsResultRegistration = false,
+      shareLink = null;
 
   @override
   Future<void> initialize() async {}
@@ -55,6 +69,9 @@ class NoopGamePlatform extends GamePlatform {
 
   @override
   final bool allowsResultRegistration;
+
+  @override
+  final String? shareLink;
 }
 
 GamePlatform createGamePlatform() => platform_factory.createGamePlatform();

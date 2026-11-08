@@ -49,6 +49,10 @@ grep -q 'touch-action: none' "$INDEX" || fail "touch-action: none missing"
 if grep -rIl -e 'crazygames-sdk' -e 'sdk.crazygames.com' "$OUT" >/dev/null 2>&1; then
   fail "CrazyGames SDK reference found in bundle"
 fi
+# The game code must not carry portal or outbound share links: the CrazyGames
+# adapter and the Pages share link are tree-shaken (feature-next-goal-share).
+grep -qi 'crazygames' "$OUT/main.dart.js" && fail "CrazyGames string found in main.dart.js"
+grep -q 'bon-on.github.io' "$OUT/main.dart.js" && fail "share link found in main.dart.js"
 # Roboto must be bundled, otherwise Flutter fetches it from fonts.gstatic.com.
 grep -q '"family":"Roboto"' "$OUT/assets/FontManifest.json" \
   || fail "Roboto missing from FontManifest.json"

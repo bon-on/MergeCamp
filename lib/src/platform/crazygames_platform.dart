@@ -158,6 +158,10 @@ class CrazyGamesPlatform extends GamePlatform {
   @override
   bool get allowsResultRegistration => false;
 
+  /// The game's own CrazyGames page; shared as text only, never opened.
+  @override
+  String? get shareLink => 'https://www.crazygames.com/game/mergecamp-jvc';
+
   @override
   void setAudioMuteListener(void Function()? listener) {
     _muteListener = listener;
