@@ -122,6 +122,15 @@ class CampProgress {
   /// XP needed to go from [level] to the next one.
   static int xpToAdvance(int level) => 230 + 55 * (level < 1 ? 0 : level - 1);
 
+  /// Total XP at which [level] is reached (0 for level 1).
+  static int totalXpForLevel(int level) {
+    var total = 0;
+    for (var l = 1; l < level; l++) {
+      total += xpToAdvance(l);
+    }
+    return total;
+  }
+
   /// XP awarded for a run's score.
   static int xpForScore(int score) => score <= 0 ? 0 : score ~/ 10;
 
