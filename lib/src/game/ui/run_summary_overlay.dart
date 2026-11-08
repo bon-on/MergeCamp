@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../art/camp_palette.dart';
@@ -126,8 +126,17 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     if (old.theme != widget.theme ||
         old.progress.stickerSlots != widget.progress.stickerSlots ||
         old.progress.level != widget.progress.level ||
-        old.report != widget.report) {
+        old.report.score != widget.report.score ||
+        old.report.highestTier != widget.report.highestTier ||
+        old.report.outcome != widget.report.outcome ||
+        !listEquals(old.board, widget.board)) {
       _card = null;
+      // Render the new card ahead of the next Share tap as well.
+      if (_canShare && _controller.isCompleted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _canShare) unawaited(_cardBytes());
+        });
+      }
     }
   }
 

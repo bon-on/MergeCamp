@@ -378,6 +378,7 @@ void main() {
     await _pumpOverlay(tester, share: share, renderCard: render);
     // Rendered ahead of the tap once the entrance animation is done.
     expect(rendered, hasLength(1));
+    final state = tester.state(find.byType(RunSummaryOverlay));
     await _pumpOverlay(
       tester,
       share: share,
@@ -385,6 +386,12 @@ void main() {
       progress: const CampProgress.initial().withSticker('pennant', 5),
       theme: CampTheme.night,
     );
+    // The same summary state re-renders ahead of the tap, once.
+    expect(
+      identical(tester.state(find.byType(RunSummaryOverlay)), state),
+      isTrue,
+    );
+    expect(rendered, hasLength(2));
     await _tapButton(tester, 'Save card');
     expect(rendered, hasLength(2));
     expect(rendered.last.theme, CampTheme.night);
