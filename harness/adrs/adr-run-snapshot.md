@@ -4,6 +4,7 @@ title: Persist live runs and meta progress in one local envelope
 status: accepted
 related_specs:
   - feature-first-run-resume
+  - feature-first-minute-rewards
 ---
 
 # ADR: Persist live runs and meta progress in one local envelope
@@ -24,3 +25,4 @@ Controller keeps pure merge rules and exposes a side-effect-free preview. Final-
 - Every placement or axe rewrites the whole envelope (a few KB); writes are serialized so an older envelope never lands after a newer one.
 - Unseen future pieces are re-rolled after a reload; acceptable without a competitive daily mode.
 - Input waits for the initial progress load, like it already waited for the tutorial flag.
+- feature-first-minute-rewards keeps `activeRun` unchanged. The welcome run's mid-run level-up only writes meta fields (`welcomeRun`, `stickersSeen`, sticker slots, the one-time welcome bonus XP); the run's own XP is still credited once, in the write that clears `activeRun`.

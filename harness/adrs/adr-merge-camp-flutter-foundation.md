@@ -10,6 +10,7 @@ related_specs:
   - feature-mobile-perf
   - feature-camp-stickers
   - feature-next-goal-share
+  - feature-first-minute-rewards
 ---
 
 # ADR: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합을 사용

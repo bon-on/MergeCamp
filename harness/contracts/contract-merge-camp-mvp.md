@@ -9,6 +9,7 @@ related_specs:
   - feature-first-run-resume
   - feature-camp-stickers
   - feature-next-goal-share
+  - feature-first-minute-rewards
 evidence_files:
   - reports/merge-camp-audit-report.md
   - reports/merge-camp-plan-report.md
