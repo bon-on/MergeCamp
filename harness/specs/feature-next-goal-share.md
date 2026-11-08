@@ -35,16 +35,19 @@ CrazyGames Basic Launch 지표가 낮다: 평균 플레이 3분, 1분 이상 플
      - 도감: 아직 발견하지 않은 가장 낮은 캠프 단계(1~8)의 이름과 발견 수(N/8). 모두 발견했으면 없다.
    - 거리는 "예상 판 수"로 비교한다: XP 목표는 모자란 XP / 300(평균 판당 XP, `CampProgress` 튜닝 메모), 도감 목표는
      max(1, 목표 단계 - 그보다 낮은 발견 단계 중 최고). 가장 작은 하나를 강조하고, 같으면 레벨 > 도감 > 테마 순으로 고른다.
-   - 요약에는 최대 3개를 거리 순으로 보여 준다. 강조 목표는 그림(스티커/캠프 타일/테마 아이콘), 제목, 숫자, 진행 바를 갖고,
-     나머지는 한 줄씩 작게 보인다.
+   - 요약에는 최대 3개를 거리 순으로 보여 준다. 강조 목표는 그림(스티커/캠프 타일/테마 아이콘), 제목, 숫자, 진행 바를 갖고
+     Play again 바로 위(가로 화면에서는 버튼 열 맨 위)에 고정되어 스크롤 없이 늘 보인다. 나머지는 스크롤 영역 끝 "Other goals"에 한 줄씩 작게 보인다.
 2. 버튼 배치
    - Play again을 가장 크게(높이 60, 굵은 큰 글씨) 두고, 요약 내용이 길어도 항상 보이도록 스크롤 영역 밖 아래쪽에 고정한다.
+   - 높이 800 미만의 가로 화면(1280x720, 1366x768, 844x390, 640x480)은 점수/기록을 왼쪽, 목표와 버튼을 오른쪽 열에 둔다.
+     높이가 짧은 화면(세로 720 미만, 가로 520 미만)은 부제와 단축키 안내를 숨기고 점수 글자를 줄인다.
    - Album/Decorate와 공유 버튼은 그 아래 작은 보조 버튼이다.
 3. 결과 카드(공유 이미지)
    - `Canvas`/`PictureRecorder`/`Picture.toImage`로 로컬에서 1080x1350 PNG를 그린다. 네트워크와 새 패키지는 쓰지 않는다.
    - 내용: 게임 이름(MergeCamp), 점수, 최고 점수, 신기록이면 "New best!", 최고 캠프 그림과 이름, 캠프 레벨,
      마지막 보드(4x4 타일)와 그 주변에 붙인 스티커의 축소판, 포털 이름/URL이 없는 꼬리말("Can you build a bigger camp?").
-   - 카드는 버튼을 눌렀을 때 한 번 그리고 같은 요약 안에서는 재사용한다.
+   - Web Share는 최근 사용자 탭이 필요하므로, Share 버튼이 보이면 요약 등장 애니메이션이 끝난 뒤 카드를 미리 한 번 그린다(없으면 Save card 탭 때).
+     같은 요약 안에서는 재사용하되, 꾸미기/도감에서 테마나 스티커가 바뀌면 다시 그린다. 실패한 렌더 결과는 캐시하지 않는다.
 4. 공유 동작(요약의 보조 버튼, 모두 실패해도 예외 없이 짧은 토스트)
    - Copy result: "I scored N in MergeCamp! Top camp: X, camp Lv L. <링크>" 텍스트를 클립보드에 넣는다. 성공 "Copied!", 실패 "Could not copy".
      Flutter `Clipboard`가 실패하면 웹에서는 숨긴 textarea + `execCommand('copy')`로 한 번 더 시도한다.
@@ -63,7 +66,7 @@ CrazyGames Basic Launch 지표가 낮다: 평균 플레이 3분, 1분 이상 플
 - `nextGoals`: 레벨 목표의 모자란 XP는 `xpForNextLevel - xpIntoLevel`이고 스티커 이름은 `Sticker.forLevel(level + 1)`이다.
   다음 레벨에서 열리는 테마는 레벨 목표에 합쳐지고, 더 먼 테마는 따로 나온다. 도감 목표는 가장 낮은 미발견 단계다.
   강조는 예상 판 수가 가장 작은 하나이며 동점 규칙이 결정적이다. 25레벨 이상, 모든 테마/도감 완료에서도 예외 없이 동작한다.
-- 요약에 Next goal 블록과 숫자가 보이고, Play again이 가장 큰 버튼이며 스크롤하지 않아도 화면 안에 있다.
+- 요약에 Next goal 블록과 숫자가 보이고, 강조 목표와 Play again이 스크롤하지 않아도 화면 안에 있으며 Play again이 가장 큰 버튼이다.
 - 1280x720, 1280x672, 1366x768, 390x844, 390x796, 844x390, 360x640, 640x480, 320x640에서 요약이 오버플로 없이 표시된다.
 - 결과 카드 렌더러가 PNG 시그니처를 가진 비어 있지 않은 바이트를 만든다(인코더 주입 가능).
 - GamePix 플랫폼(`shareLink == null`)에서는 Copy/Save/Share 버튼이 없다. Pages/CrazyGames 링크가 공유 텍스트에 들어간다.
@@ -91,5 +94,17 @@ CrazyGames Basic Launch 지표가 낮다: 평균 플레이 3분, 1분 이상 플
 
 ## Evidence
 - `flutter analyze`, `flutter test`, `flutter test --platform chrome test/web`
-- `tool/build_crazygames.sh`, `tool/build_gamepix.sh`
+- `tool/build_crazygames.sh`, `tool/build_gamepix.sh`, `flutter build web --release --base-href /MergeCamp/`
 - `node <harness-lab>/dist/index.js audit . --format md`
+
+### 검증 결과
+2026-11-08, 기준 커밋 6dfa7fc 이후 구현.
+- `flutter analyze` 이슈 없음. `flutter test` 260개 통과(`test/next_goal_test.dart`, `test/result_share_test.dart` 포함).
+  `flutter test --platform chrome test/web`(헤드리스 Chrome `--mute-audio`) 22개 통과(`test/web/result_share_web_test.dart`: 빌드별 링크, navigator.share 대역으로 파일 첨부/취소/실패).
+- `tool/build_gamepix.sh` 자체 검사 통과: `main.dart.js`에 `crazygames`, `bon-on.github.io` 0건(스크립트가 검사). `tool/build_crazygames.sh` 통과, 번들에 `mergecamp-jvc` 링크 1건, Pages 링크 0건.
+  Pages 빌드 성공, Pages 링크 1건, CrazyGames 링크 0건.
+- harness audit: Critical 0. 남은 경고는 이 명세와 무관한 기존 항목(workflow/maintenance 파일, how-to-play 백링크)이다.
+- 독립 리뷰(code-reviewer): High 1건(작은 화면에서 Next goal이 스크롤 아래로 숨음)은 강조 목표를 버튼 위에 고정하고 가로 2열 배치로 고쳤고, 레이아웃 테스트에 강조 목표가 화면 안에 있는지 검사를 넣었다.
+  Medium 2건(첫 Share 탭의 사용자 활성화 만료, 꾸미기 뒤 오래된 카드 캐시)과 Low 3건(AbortError 판별, 웹 테스트 부족, main.dart.js 누락 시 검사 통과)도 고쳤다.
+- 측정하지 못한 것: CrazyGames iframe 안에서 클립보드/다운로드/Web Share 허용 여부(iframe의 권한 정책과 sandbox에 달려 있다. 막히면 토스트만 보이거나 Share 버튼이 숨는다), 실기기 공유 시트.
+  보드 페인트 경로는 바꾸지 않아 모바일 프레임 시간은 다시 재지 않았다.

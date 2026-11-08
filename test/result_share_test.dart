@@ -189,6 +189,7 @@ Future<void> _pumpOverlay(
   required ResultShare share,
   required ResultCardRenderer renderCard,
   CampProgress progress = const CampProgress.initial(),
+  CampTheme theme = CampTheme.snow,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -204,7 +205,7 @@ Future<void> _pumpOverlay(
           bestChain: 2,
           missionsCompleted: 1,
         ),
-        theme: CampTheme.snow,
+        theme: theme,
         progress: progress,
         board: const [1, 2, null, 3],
         shareLink: 'https://example.test/',
@@ -264,6 +265,13 @@ void main() {
       // Always on screen without scrolling, and the biggest button.
       expect(play.top, greaterThanOrEqualTo(0));
       expect(play.bottom, lessThanOrEqualTo(size.height));
+      // The highlighted next goal is pinned in view too.
+      final goal = tester.getRect(
+        find.byKey(const ValueKey('next-goal-highlight')),
+      );
+      expect(goal.top, greaterThanOrEqualTo(0));
+      expect(goal.bottom, lessThanOrEqualTo(size.height));
+      expect(goal.right, lessThanOrEqualTo(size.width));
       for (final label in const [
         'Album',
         'Decorate',
@@ -357,6 +365,48 @@ void main() {
     expect(share.shared.single.$1, endsWith('https://example.test/'));
     expect(share.shared.single.$2, _fakePng);
     expect(find.text('Could not share'), findsNothing);
+  });
+
+  testWidgets('the card is rendered again after decorating', (tester) async {
+    final share = _FakeShare();
+    final rendered = <ResultCardData>[];
+    Future<Uint8List?> render(ResultCardData data) async {
+      rendered.add(data);
+      return _fakePng;
+    }
+
+    await _pumpOverlay(tester, share: share, renderCard: render);
+    // Rendered ahead of the tap once the entrance animation is done.
+    expect(rendered, hasLength(1));
+    await _pumpOverlay(
+      tester,
+      share: share,
+      renderCard: render,
+      progress: const CampProgress.initial().withSticker('pennant', 5),
+      theme: CampTheme.night,
+    );
+    await _tapButton(tester, 'Save card');
+    expect(rendered, hasLength(2));
+    expect(rendered.last.theme, CampTheme.night);
+    expect(rendered.last.stickerSlots.at(5), 'pennant');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('a failed render is retried on the next tap', (tester) async {
+    final share = _FakeShare();
+    var calls = 0;
+    await _pumpOverlay(
+      tester,
+      share: share,
+      renderCard: (_) async => ++calls < 3 ? null : _fakePng,
+    );
+    await _tapButton(tester, 'Save card');
+    expect(find.text('Could not save'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    await _tapButton(tester, 'Save card');
+    expect(find.text('Card saved'), findsOneWidget);
+    expect(calls, 3);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('share failures only show a short toast', (tester) async {

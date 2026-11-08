@@ -108,6 +108,27 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.playAgainFocus.requestFocus();
     });
+    // Web Share needs the user's tap to be recent, so the card is rendered
+    // ahead of time once the entrance animation is over (not on the tap).
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted && _canShare) {
+        unawaited(_cardBytes());
+      }
+    });
+  }
+
+  bool get _canShare => widget.shareLink != null && widget.share.canShare;
+
+  @override
+  void didUpdateWidget(RunSummaryOverlay old) {
+    super.didUpdateWidget(old);
+    // Decorate and Album open over the summary and may change the card.
+    if (old.theme != widget.theme ||
+        old.progress.stickerSlots != widget.progress.stickerSlots ||
+        old.progress.level != widget.progress.level ||
+        old.report != widget.report) {
+      _card = null;
+    }
   }
 
   @override
@@ -138,9 +159,9 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         screen.width >= 640 &&
         screen.width > screen.height &&
         screen.height < 800;
-    // Short portrait screens trim the decoration so the next goal stays in
-    // view above the buttons.
-    _compact = !wide && screen.height < 720;
+    // Short screens trim the decoration so the facts keep some room next
+    // to the pinned goal and buttons.
+    _compact = screen.height < (wide ? 520 : 720);
     final facts = SingleChildScrollView(
       child: AnimatedBuilder(
         animation: _controller,
@@ -235,7 +256,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     final link = widget.shareLink;
     final share = widget.share;
     final canSave = link != null && share.canSaveImage;
-    final canShare = link != null && share.canShare;
+    final canShare = _canShare;
     Widget small(String label, IconData icon, VoidCallback? onPressed) =>
         Expanded(
           child: CampButton(
@@ -256,6 +277,8 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     ];
     final busy = _sharing;
     return [
+      _goalHighlight(palette),
+      const SizedBox(height: 10),
       CampButton(
         key: const ValueKey('summary-play-again'),
         palette: palette,
@@ -336,15 +359,22 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     );
   }
 
-  /// The card is rendered once per summary, on the first request.
+  /// The card is rendered once per summary (again only when its inputs
+  /// change); a failed render is retried on the next request.
   Future<Uint8List?> _cardBytes() {
-    return _card ??= () async {
+    final pending = _card;
+    if (pending != null) return pending;
+    final completer = Completer<Uint8List?>();
+    _card = completer.future;
+    () async {
+      Uint8List? png;
       try {
-        return await widget.renderCard(_cardData);
-      } catch (_) {
-        return null;
-      }
+        png = await widget.renderCard(_cardData);
+      } catch (_) {}
+      if (png == null && identical(_card, completer.future)) _card = null;
+      completer.complete(png);
     }();
+    return completer.future;
   }
 
   void _notify(String text, IconData icon) {
@@ -545,14 +575,18 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
           const SizedBox(height: 14),
           _xpSection(palette, outcome),
         ],
-        const SizedBox(height: 14),
-        _nextGoals(palette),
+        if (nextGoals(widget.progress).length > 1) ...[
+          const SizedBox(height: 8),
+          PanelCaption('Other goals', palette: palette),
+          _moreGoals(palette),
+        ],
       ],
     );
   }
 
-  /// The closest goals with numbers; the nearest one is highlighted.
-  Widget _nextGoals(CampPalette palette) {
+  /// The nearest goal with its number, pinned above Play again so it is
+  /// always in view (feature-next-goal-share).
+  Widget _goalHighlight(CampPalette palette) {
     final goals = nextGoals(widget.progress);
     final top = goals.first;
     final Widget art;
@@ -628,6 +662,17 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  /// The other goals, one line each, at the end of the scrolling facts.
+  Widget _moreGoals(CampPalette palette) {
+    final goals = nextGoals(widget.progress);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         for (final goal in goals.skip(1))
           Padding(
             padding: const EdgeInsets.only(top: 6, left: 4, right: 4),

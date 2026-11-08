@@ -51,6 +51,7 @@ if grep -rIl -e 'crazygames-sdk' -e 'sdk.crazygames.com' "$OUT" >/dev/null 2>&1;
 fi
 # The game code must not carry portal or outbound share links: the CrazyGames
 # adapter and the Pages share link are tree-shaken (feature-next-goal-share).
+[ -f "$OUT/main.dart.js" ] || fail "main.dart.js missing"
 grep -qi 'crazygames' "$OUT/main.dart.js" && fail "CrazyGames string found in main.dart.js"
 grep -q 'bon-on.github.io' "$OUT/main.dart.js" && fail "share link found in main.dart.js"
 # Roboto must be bundled, otherwise Flutter fetches it from fonts.gstatic.com.

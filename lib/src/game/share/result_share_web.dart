@@ -140,10 +140,26 @@ Future<ShareStatus> webShare({
     await navigator.callMethod<JSPromise<JSAny?>>('share'.toJS, data).toDart;
     return ShareStatus.done;
   } catch (error) {
-    return '$error'.contains('AbortError')
-        ? ShareStatus.cancelled
-        : ShareStatus.failed;
+    return shareStatusForError(error);
   }
+}
+
+/// Maps a rejected `navigator.share` to a status: the player closing the
+/// sheet (an `AbortError` DOMException) is not a failure.
+ShareStatus shareStatusForError(Object? error) {
+  String? name;
+  try {
+    // A rejected promise throws the raw JS value (a DOMException) under
+    // dart2js; the string check below covers other compilers.
+    // ignore: invalid_runtime_check_with_js_interop_types
+    if (error is JSAny && error.isA<JSObject>()) {
+      name =
+          (error as JSObject).getProperty<JSAny?>('name'.toJS)?.dartify()
+              as String?;
+    }
+  } catch (_) {}
+  final aborted = name == 'AbortError' || '$error'.contains('AbortError');
+  return aborted ? ShareStatus.cancelled : ShareStatus.failed;
 }
 
 @JS('Blob')
