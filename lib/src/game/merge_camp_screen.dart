@@ -659,7 +659,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       return quiet;
     }
     _toast(milestone.text, Icons.celebration_rounded);
-    if (!quiet) unawaited(_feedback.mission());
+    unawaited(_feedback.mission());
     return true;
   }
 
@@ -1159,6 +1159,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
 /// First-run celebrations (feature-first-minute-rewards).
 enum _Milestone {
+  // Shown as the welcome bonus toast.
   firstMerge('First merge!'),
   bigMerge('Big merge! 4+ camps at once'),
   chain('First chain!'),

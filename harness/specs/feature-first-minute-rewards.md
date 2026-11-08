@@ -78,3 +78,16 @@ CrazyGames 방문자의 2/3가 1분 안에 떠난다(1분 이상 플레이 33%).
 - `flutter analyze`, `flutter test`, `flutter test --platform chrome test/web`
 - `tool/build_crazygames.sh`, `tool/build_gamepix.sh`
 - `node <harness-lab>/dist/index.js audit . --format md`
+
+### 검증 결과
+2026-11-08, 기준 커밋 b21d1c9 이후 구현.
+- `flutter analyze` 이슈 없음. `flutter test` 272개 통과(`test/first_minute_rewards_test.dart` 12개: runXp, 보너스 1회, 판 도중 Lv2 멱등, 판 끝 이중 계산/재알림 없음,
+  Lv3 이상은 판 끝 알림, JSON 왕복, stickersSeen이 레벨보다 높은 기존 저장, 새 플레이어 대본 첫 판(연습 머지 → 6번째 배치에서 Lv2, 다시 로드, 재시작 정산),
+  마지막 수의 레벨업, 기념 토스트, 기존 플레이어 흐름). `test/first_run_resume_test.dart`의 다시 로드 테스트는 환영 보너스를 반영하도록 기대값만 고쳤다.
+  `flutter test --platform chrome test/web`(헤드리스 Chrome `--mute-audio`) 22개 통과.
+- `tool/build_gamepix.sh`, `tool/build_crazygames.sh` 자체 검사 통과, Pages 빌드 성공. harness audit: Critical 0(기존 경고 7건).
+- 독립 리뷰(code-reviewer): Critical/High 없음. Medium 3건을 고쳤다: 판 끝 알림 기준을 `stickerLevel`로 좁혀 stickersSeen이 레벨보다 높은 기존 저장의 알림을 유지,
+  feature-camp-stickers 명세와 `stickers.dart` 주석의 보유 규칙 갱신, 약한 테스트 보강(HUD 실시간 Lv2와 XP, 재시작 시 재알림/효과음 없음, 마지막 수 레벨업).
+  Low: 판 끝(배치 0) 정산에서도 `welcomeRun`을 끄고 불필요한 분기를 정리했다. 연쇄 기념 토스트와 다시 로드 뒤 기념 건너뛰기는 위젯 테스트가 없다.
+- 보드 페인트 경로(`BoardStickerPainter`, 타일 그림)는 바꾸지 않았다. 판 도중 스티커가 하나 붙을 때 스티커 층 캐시가 한 번 다시 만들어질 뿐이라 모바일 프레임 시간은 다시 재지 않았다.
+- 측정하지 못한 것: 실제 첫 판에서 Lv2까지 걸리는 시간(설계상 6번째 배치, 약 30~60초로 추정), 실기기.

@@ -9,6 +9,7 @@ import 'package:merge_camp/src/audio/sound_mute_store.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/game/ui/camp_ui.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_progress_store.dart';
 import 'package:merge_camp/src/meta/camp_theme.dart';
@@ -294,6 +295,30 @@ void main() {
       expect(legacy.toJson().containsKey('welcomeRun'), isFalse);
     });
 
+    test('a stickersSeen above the level from elsewhere still announces', () {
+      final p = CampProgress(
+        bestScore: 50,
+        discoveredTiers: const {1},
+        totalXp: _xpForLevel(2) + 10,
+        selectedTheme: CampTheme.summer,
+        stickersSeen: 5,
+      );
+      expect(p.stickerLevel, 2);
+      final outcome = p.applyRun(
+        RunSummary(
+          score: (_xpForLevel(3) - p.totalXp) * 10,
+          highestTier: 3,
+          bestChain: 1,
+          placements: 3,
+        ),
+      );
+      expect(outcome.levelAfter, 3);
+      expect(outcome.announcesLevelUp, isTrue);
+      expect(outcome.newStickers.single.sticker.id, 'acorn');
+      expect(outcome.newlyUnlockedThemes, [CampTheme.autumn]);
+      expect(outcome.progress.stickersSeen, 5);
+    });
+
     test('existing players keep the old run-end level-up', () {
       final p = CampProgress(
         bestScore: 50,
@@ -350,8 +375,13 @@ void main() {
       expect(store.value.activeRun, isNotNull);
       expect(_boardStickerSlots(tester), {0, 1});
       expect(s.audio.where((a) => a.contains('level_up')), hasLength(1));
-      // The HUD shows the live level.
-      expect(find.text('Lv'), findsWidgets);
+      // The HUD shows the live level and XP (Lv 2 needs 285 more).
+      expect(
+        find.byWidgetPredicate((w) => w is LevelBadge && w.level == 2),
+        findsOneWidget,
+      );
+      expect(find.byWidgetPredicate((w) => w is LevelBadge), findsOneWidget);
+      expect(find.textContaining(' / 285 XP'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));
 
       // Reload mid-run: the run and the sticker are back, nothing repeats.
@@ -375,8 +405,14 @@ void main() {
           mergeCount: s.controller.mergeCount,
         ),
       );
+      final levelUpSounds = s.audio.where((a) => a.contains('level_up')).length;
       await tester.tap(find.byTooltip('Restart run'));
       await tester.pump();
+      expect(find.text('Camp level up! Lv 2'), findsNothing);
+      expect(
+        s.audio.where((a) => a.contains('level_up')),
+        hasLength(levelUpSounds),
+      );
       expect(store.value.totalXp, CampProgress.welcomeBonusXp + runXp);
       expect(store.value.welcomeRun, isFalse);
       expect(store.value.level, 2);
@@ -466,6 +502,41 @@ void main() {
       expect(find.textContaining('Welcome bonus'), findsNothing);
       expect(find.text('Big merge! 4+ camps at once'), findsNothing);
       await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('levelling up on the final move announces Lv 2 once', (
+      tester,
+    ) async {
+      final store = MemoryCampProgressStore(_welcome());
+      final s = await _pump(
+        tester,
+        tutorial: _TutorialStore(seen: true),
+        store: store,
+      );
+      final board = List<int?>.generate(
+        MergeCampController.cellCount,
+        (index) => (index ~/ 4 + index % 4).isEven ? 1 : 2,
+      );
+      board[15] = null;
+      s.controller.debugLoadBoard(
+        board,
+        nextTier: 3,
+        trailAxes: 0,
+        score: 1000,
+        placements: 10,
+        lastAwardedAxeAt: 10,
+      );
+      await tester.tap(_cell(15));
+      await tester.pumpAndSettle();
+      expect(find.text('Camp jammed!'), findsOneWidget);
+      expect(store.value.level, 2);
+      expect(store.value.stickerSlots.at(1), 'pine-tree');
+      expect(s.audio.where((a) => a.contains('level_up')), hasLength(1));
+      expect(find.text('Level up! Lv 2'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('summary-sticker-pine-tree')),
+        findsNothing,
+      );
     });
 
     testWidgets('an existing player still levels up at the run end', (

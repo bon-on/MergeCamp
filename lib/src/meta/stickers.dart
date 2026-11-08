@@ -1,8 +1,10 @@
 /// Camp stickers: level-up rewards stuck around the board (cosmetic only).
 ///
 /// Reaching camp level L (1 <= L <= [Sticker.count]) owns the L-th sticker
-/// of [Sticker.catalog]; ownership is derived from the level and never
-/// stored. Only where owned stickers are stuck is saved ([StickerSlots]).
+/// of [Sticker.catalog]; ownership is derived from
+/// `CampProgress.stickerLevel` (the level, or Lv 2 once the welcome run
+/// levelled up mid-run, see feature-first-minute-rewards) and never stored.
+/// Only where owned stickers are stuck is saved ([StickerSlots]).
 class Sticker {
   const Sticker(this.id, this.name, this.level, {this.rare = false});
 

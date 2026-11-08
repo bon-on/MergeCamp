@@ -300,11 +300,12 @@ class CampProgress {
 
   RunOutcome applyRun(RunSummary summary) {
     final levelBefore = level;
-    final seen = stickersSeen ?? 0;
-    final announced = seen > levelBefore ? seen : levelBefore;
+    // Only the welcome run's mid-run level-up counts as announced early; a
+    // stickersSeen above the level from elsewhere keeps the old behaviour.
+    final announced = stickerLevel;
     if (summary.placements <= 0) {
       return RunOutcome(
-        progress: withActiveRun(null),
+        progress: withActiveRun(null)._copy(welcomeRun: false),
         xpGained: 0,
         isNewBest: false,
         previousBest: bestScore,
