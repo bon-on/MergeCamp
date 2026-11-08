@@ -44,6 +44,26 @@ class CampTileArt extends StatefulWidget {
   State<CampTileArt> createState() => _CampTileArtState();
 }
 
+/// Paints a still camp tile of [tier] in an [s] x [s] square at the origin,
+/// as vectors (offscreen images such as the shared result card).
+void paintCampTile(
+  Canvas canvas,
+  int tier,
+  CampTheme theme,
+  double s, {
+  bool showBadge = true,
+}) {
+  if (s <= 0) return;
+  _CampTilePainter(
+    tier: tier.clamp(1, CampTileArt.maxArtTier),
+    palette: CampPalette.of(theme),
+    silhouette: false,
+    showBadge: showBadge,
+    animation: null,
+    devicePixelRatio: 1,
+  )._paintTile(canvas, s, 0);
+}
+
 /// Tiers whose illustration has motion.
 const Set<int> _animatedTiers = {2, 4, 5, 7, 8};
 

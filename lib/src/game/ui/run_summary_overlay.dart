@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -7,7 +9,11 @@ import '../../art/camp_tile_art.dart';
 import '../../art/sticker_art.dart';
 import '../../meta/camp_progress.dart';
 import '../../meta/camp_theme.dart';
+import '../../meta/next_goal.dart';
 import '../merge_camp_controller.dart';
+import '../share/result_card.dart';
+import '../share/result_share.dart';
+import 'banners.dart';
 import 'camp_ui.dart';
 
 /// Facts shown on the game over card.
@@ -29,23 +35,43 @@ class RunReport {
   final RunOutcome? outcome;
 }
 
-/// "Camp jammed!" summary with score count-up, best, stats and the XP bar.
-/// The board underneath gets no input while this is open.
+/// Renders the shared card; tests inject a fake.
+typedef ResultCardRenderer = Future<Uint8List?> Function(ResultCardData data);
+
+/// "Camp jammed!" summary with score count-up, best, stats, the XP bar, the
+/// next goals and the share actions (feature-next-goal-share). The board
+/// underneath gets no input while this is open.
 class RunSummaryOverlay extends StatefulWidget {
   const RunSummaryOverlay({
     super.key,
     required this.report,
     required this.theme,
+    required this.progress,
     required this.onPlayAgain,
     required this.onAlbum,
     required this.onDecorate,
     required this.playAgainFocus,
+    this.board = const <int?>[],
+    this.shareLink,
+    this.share = const ResultShare(),
+    this.renderCard = renderResultCard,
     this.busy = false,
     this.animateArt = true,
   });
 
   final RunReport report;
   final CampTheme theme;
+
+  /// Saved progress after the run (goals, level, stickers on the card).
+  final CampProgress progress;
+
+  /// Final board shown on the result card.
+  final List<int?> board;
+
+  /// Game page in shared results; null hides the share actions (GamePix).
+  final String? shareLink;
+  final ResultShare share;
+  final ResultCardRenderer renderCard;
   final VoidCallback onPlayAgain;
   final VoidCallback onAlbum;
   final VoidCallback onDecorate;
@@ -67,6 +93,12 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     vsync: this,
     duration: const Duration(milliseconds: 2200),
   )..forward();
+
+  Future<Uint8List?>? _card;
+  bool _compact = false;
+  bool _sharing = false;
+  int _toastSerial = 0;
+  ToastMessage? _toast;
 
   @override
   void initState() {
@@ -98,6 +130,23 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     final palette = CampPalette.of(widget.theme);
     final report = widget.report;
     final outcome = report.outcome;
+    // Landscape screens up to laptop height (16:9 portal frames, phones
+    // turned sideways) put the buttons beside the facts so nothing scrolls
+    // out of sight.
+    final screen = MediaQuery.sizeOf(context);
+    final wide =
+        screen.width >= 640 &&
+        screen.width > screen.height &&
+        screen.height < 800;
+    // Short portrait screens trim the decoration so the next goal stays in
+    // view above the buttons.
+    _compact = !wide && screen.height < 720;
+    final facts = SingleChildScrollView(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => _content(context, palette, report, outcome),
+      ),
+    );
     return Stack(
       children: [
         const ModalBarrier(dismissible: false, color: Color(0x99101A14)),
@@ -106,7 +155,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
+                constraints: BoxConstraints(maxWidth: wide ? 760 : 440),
                 child: AnimatedBuilder(
                   animation: _controller,
                   builder: (context, child) {
@@ -124,14 +173,33 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
                     child: CampPanel(
                       palette: palette,
                       radius: 28,
-                      padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
-                      child: SingleChildScrollView(
-                        child: AnimatedBuilder(
-                          animation: _controller,
-                          builder: (context, _) =>
-                              _content(context, palette, report, outcome),
-                        ),
-                      ),
+                      padding: const EdgeInsets.fromLTRB(22, 18, 22, 14),
+                      child: wide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(child: facts),
+                                const SizedBox(width: 18),
+                                SizedBox(
+                                  width: 260,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: _actions(palette),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Flexible(child: facts),
+                                const SizedBox(height: 12),
+                                ..._actions(palette),
+                              ],
+                            ),
                     ),
                   ),
                 ),
@@ -139,9 +207,205 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             ),
           ),
         ),
+        if (_toast != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 8,
+            child: SafeArea(
+              child: Center(
+                child: CampToast(
+                  key: ValueKey('summary-toast-${_toast!.id}'),
+                  message: _toast!,
+                  palette: palette,
+                  onDone: () {
+                    if (mounted) setState(() => _toast = null);
+                  },
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
+
+  /// Play again (the biggest button, always visible below the scrolling
+  /// facts), then the small secondary and share buttons.
+  List<Widget> _actions(CampPalette palette) {
+    final link = widget.shareLink;
+    final share = widget.share;
+    final canSave = link != null && share.canSaveImage;
+    final canShare = link != null && share.canShare;
+    Widget small(String label, IconData icon, VoidCallback? onPressed) =>
+        Expanded(
+          child: CampButton(
+            palette: palette,
+            label: label,
+            icon: icon,
+            primary: false,
+            height: 42,
+            fontSize: 13,
+            onPressed: onPressed,
+          ),
+        );
+    List<Widget> spaced(List<Widget> children) => [
+      for (var i = 0; i < children.length; i++) ...[
+        if (i > 0) const SizedBox(width: 8),
+        children[i],
+      ],
+    ];
+    final busy = _sharing;
+    return [
+      CampButton(
+        key: const ValueKey('summary-play-again'),
+        palette: palette,
+        label: 'Play again',
+        icon: Icons.replay_rounded,
+        height: _compact ? 54 : 60,
+        fontSize: _compact ? 19 : 21,
+        focusNode: widget.playAgainFocus,
+        onPressed: widget.busy ? null : widget.onPlayAgain,
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: spaced([
+          small('Album', Icons.collections_bookmark_rounded, widget.onAlbum),
+          small('Decorate', Icons.auto_awesome_rounded, widget.onDecorate),
+        ]),
+      ),
+      if (link != null) ...[
+        const SizedBox(height: 8),
+        Row(
+          key: const ValueKey('summary-share-row'),
+          children: spaced([
+            small(
+              'Copy result',
+              Icons.content_copy_rounded,
+              busy ? null : () => unawaited(_copy(link)),
+            ),
+            if (canSave)
+              small(
+                'Save card',
+                Icons.download_rounded,
+                busy ? null : () => unawaited(_saveCard()),
+              ),
+            if (canShare)
+              small(
+                'Share',
+                Icons.ios_share_rounded,
+                busy ? null : () => unawaited(_shareResult(link)),
+              ),
+          ]),
+        ),
+      ],
+      if (!_compact) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Enter or R to play again',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: palette.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ];
+  }
+
+  String _shareText(String link) => resultShareText(
+    score: widget.report.score,
+    highestTier: widget.report.highestTier,
+    level: widget.progress.level,
+    link: link,
+  );
+
+  ResultCardData get _cardData {
+    final outcome = widget.report.outcome;
+    return ResultCardData(
+      score: widget.report.score,
+      best: outcome == null
+          ? math.max(widget.progress.bestScore, widget.report.score)
+          : math.max(outcome.previousBest, widget.report.score),
+      isNewBest: outcome?.isNewBest ?? false,
+      highestTier: widget.report.highestTier,
+      level: widget.progress.level,
+      board: widget.board,
+      stickerSlots: widget.progress.stickerSlots,
+      theme: widget.theme,
+    );
+  }
+
+  /// The card is rendered once per summary, on the first request.
+  Future<Uint8List?> _cardBytes() {
+    return _card ??= () async {
+      try {
+        return await widget.renderCard(_cardData);
+      } catch (_) {
+        return null;
+      }
+    }();
+  }
+
+  void _notify(String text, IconData icon) {
+    if (!mounted) return;
+    setState(() {
+      _toastSerial += 1;
+      _toast = ToastMessage(id: _toastSerial, text: text, icon: icon);
+    });
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await action();
+    } catch (_) {
+      _notify('Something went wrong', Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<void> _copy(String link) => _run(() async {
+    var ok = false;
+    try {
+      ok = await widget.share.copyText(_shareText(link));
+    } catch (_) {}
+    _notify(
+      ok ? 'Copied!' : 'Could not copy',
+      ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+    );
+  });
+
+  Future<void> _saveCard() => _run(() async {
+    var ok = false;
+    try {
+      final png = await _cardBytes();
+      if (png != null) {
+        ok = await widget.share.saveImage(png, resultCardFileName);
+      }
+    } catch (_) {}
+    _notify(
+      ok ? 'Card saved' : 'Could not save',
+      ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+    );
+  });
+
+  Future<void> _shareResult(String link) => _run(() async {
+    var status = ShareStatus.failed;
+    try {
+      final png = await _cardBytes();
+      status = await widget.share.share(
+        text: _shareText(link),
+        png: png,
+        fileName: resultCardFileName,
+      );
+    } catch (_) {}
+    if (status == ShareStatus.failed) {
+      _notify('Could not share', Icons.error_outline_rounded);
+    }
+  });
 
   Widget _content(
     BuildContext context,
@@ -168,16 +432,17 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             fontWeight: FontWeight.w900,
           ),
         ),
-        Text(
-          'No empty plots and no Trail Axe left.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: palette.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        if (!_compact)
+          Text(
+            'No empty plots and no Trail Axe left.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(height: 14),
+        SizedBox(height: _compact ? 6 : 14),
         PanelCaption('Score', palette: palette),
         Center(
           child: FittedBox(
@@ -187,7 +452,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
               key: const ValueKey('summary-score'),
               style: TextStyle(
                 color: palette.textPrimary,
-                fontSize: 54,
+                fontSize: _compact ? 42 : 54,
                 height: 1.05,
                 fontWeight: FontWeight.w900,
               ),
@@ -280,48 +545,119 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
           const SizedBox(height: 14),
           _xpSection(palette, outcome),
         ],
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Expanded(
-              child: CampButton(
-                palette: palette,
-                label: 'Album',
-                icon: Icons.collections_bookmark_rounded,
-                primary: false,
-                onPressed: widget.onAlbum,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: CampButton(
-                palette: palette,
-                label: 'Decorate',
-                icon: Icons.auto_awesome_rounded,
-                primary: false,
-                onPressed: widget.onDecorate,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        CampButton(
-          palette: palette,
-          label: 'Play again',
-          icon: Icons.replay_rounded,
-          focusNode: widget.playAgainFocus,
-          onPressed: widget.busy ? null : widget.onPlayAgain,
-        ),
+        const SizedBox(height: 14),
+        _nextGoals(palette),
+      ],
+    );
+  }
+
+  /// The closest goals with numbers; the nearest one is highlighted.
+  Widget _nextGoals(CampPalette palette) {
+    final goals = nextGoals(widget.progress);
+    final top = goals.first;
+    final Widget art;
+    if (top.sticker != null) {
+      art = StickerArt(sticker: top.sticker!, sparkle: widget.animateArt);
+    } else if (top.tier != null) {
+      art = CampTileArt(
+        tier: top.tier!,
+        theme: widget.theme,
+        animate: false,
+        silhouette: true,
+      );
+    } else {
+      art = Icon(
+        top.theme != null ? Icons.landscape_rounded : Icons.flag_rounded,
+        color: palette.accent,
+        size: 34,
+      );
+    }
+    return Column(
+      key: const ValueKey('summary-next-goals'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PanelCaption('Next goal', palette: palette),
         const SizedBox(height: 6),
-        Text(
-          'Enter or R to play again',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: palette.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+        Container(
+          key: const ValueKey('next-goal-highlight'),
+          padding: const EdgeInsets.fromLTRB(10, 8, 12, 10),
+          decoration: BoxDecoration(
+            color: palette.accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: palette.accent, width: 2),
+          ),
+          child: Row(
+            children: [
+              SizedBox.square(dimension: 44, child: Center(child: art)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      top.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      top.detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    CampProgressBar(
+                      palette: palette,
+                      value: top.progress,
+                      height: 8,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
+        for (final goal in goals.skip(1))
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
+            child: Row(
+              children: [
+                Icon(
+                  switch (goal.kind) {
+                    NextGoalKind.level => Icons.arrow_upward_rounded,
+                    NextGoalKind.album => Icons.collections_bookmark_rounded,
+                    NextGoalKind.theme => Icons.landscape_rounded,
+                  },
+                  size: 16,
+                  color: palette.textSecondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${goal.title} - ${goal.detail}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

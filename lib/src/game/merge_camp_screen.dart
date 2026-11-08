@@ -18,6 +18,7 @@ import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'how_to_play.dart';
 import 'merge_camp_controller.dart';
+import 'share/result_share.dart';
 import 'ui/album_overlay.dart';
 import 'ui/banners.dart';
 import 'ui/board_fx.dart';
@@ -37,6 +38,7 @@ class MergeCampScreen extends StatefulWidget {
     this.progressStore = const CampProgressStore(),
     this.missions,
     this.animateArt = true,
+    this.resultShare = const ResultShare(),
   });
 
   final bool enableAds;
@@ -60,6 +62,10 @@ class MergeCampScreen extends StatefulWidget {
   /// Looping art motion (tile loops, scenery, danger pulse). Tests turn it
   /// off so pumpAndSettle can settle; one-shot effects still play.
   final bool animateArt;
+
+  /// Clipboard, download and Web Share of a finished run; tests inject a
+  /// fake. Shown only when [GamePlatform.shareLink] is set.
+  final ResultShare resultShare;
 
   @override
   State<MergeCampScreen> createState() => _MergeCampScreenState();
@@ -1001,6 +1007,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                               missionsCompleted: _missions.completedThisRun,
                             ),
                         theme: _theme,
+                        progress: _progress,
+                        board: _controller.board,
+                        shareLink: widget.platform.shareLink,
+                        share: widget.resultShare,
                         busy: _breakAdInProgress,
                         animateArt: loopingArt,
                         playAgainFocus: _playAgainFocus,

@@ -203,6 +203,8 @@ class CampButton extends StatelessWidget {
     this.icon,
     this.primary = true,
     this.focusNode,
+    this.height = 52,
+    this.fontSize = 16,
   });
 
   final CampPalette palette;
@@ -211,6 +213,8 @@ class CampButton extends StatelessWidget {
   final IconData? icon;
   final bool primary;
   final FocusNode? focusNode;
+  final double height;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +224,7 @@ class CampButton extends StatelessWidget {
     final text = Text(
       label,
       maxLines: 1,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+      style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900),
     );
     final child = FittedBox(
       fit: BoxFit.scaleDown,
@@ -228,7 +232,11 @@ class CampButton extends StatelessWidget {
           ? text
           : Row(
               mainAxisSize: MainAxisSize.min,
-              children: [Icon(icon, size: 20), const SizedBox(width: 8), text],
+              children: [
+                Icon(icon, size: fontSize * 1.25),
+                SizedBox(width: fontSize * 0.5),
+                text,
+              ],
             ),
     );
     if (primary) {
@@ -239,7 +247,7 @@ class CampButton extends StatelessWidget {
           backgroundColor: palette.accent,
           foregroundColor: palette.onAccent,
           disabledBackgroundColor: palette.accent.withValues(alpha: 0.5),
-          minimumSize: const Size(0, 52),
+          minimumSize: Size(0, height),
           padding: const EdgeInsets.symmetric(horizontal: 22),
           shape: shape,
           elevation: 3,
@@ -252,8 +260,8 @@ class CampButton extends StatelessWidget {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: palette.textPrimary,
-        minimumSize: const Size(0, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        minimumSize: Size(0, height),
+        padding: EdgeInsets.symmetric(horizontal: height < 48 ? 10 : 18),
         side: BorderSide(color: palette.panelBorder, width: 2),
         shape: shape,
       ),
