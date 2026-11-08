@@ -5,25 +5,37 @@ import 'package:flutter/widgets.dart';
 import '../meta/stickers.dart';
 import 'art_raster_cache.dart';
 
-/// Where the [StickerSlots.count] slots sit around a board square: 0-2 in
-/// the lane above, 3-5 below, 6-7 left and 8-9 right, each slightly tilted
-/// like a hand-stuck sticker.
+/// Where the [StickerSlots.count] slots sit around a board square: 0-4 in
+/// the lane above and 5-9 in the lane below (left to right), 10-12 in the
+/// left lane and 13-15 in the right lane (top to bottom), each slightly
+/// tilted like a hand-stuck sticker.
 class StickerSlotGeometry {
   const StickerSlotGeometry._();
 
-  static const List<double> _across = [0.2, 0.5, 0.8];
-  static const List<double> _down = [0.3, 0.7];
+  /// Row slot centers across the board. 0.21 board apart, which keeps two
+  /// neighbours apart down to a board of about 4.1 lanes.
+  static const List<double> _across = [0.08, 0.29, 0.5, 0.71, 0.92];
+
+  /// Distance between row neighbours, as a fraction of the board.
+  static const double rowSpacing = 0.21;
+  static const List<double> _down = [0.2, 0.5, 0.8];
   static const List<double> _tilts = [
     -0.14,
     0.06,
     0.18,
+    -0.06,
+    0.12,
     0.12,
     -0.08,
     -0.16,
+    0.08,
+    -0.1,
     -0.1,
     0.14,
+    -0.04,
     0.1,
     -0.12,
+    0.06,
   ];
 
   /// Left and right slots, which narrow portrait screens leave out.
@@ -32,10 +44,16 @@ class StickerSlotGeometry {
   /// Center of [slot] relative to the top-left corner of a [board] wide
   /// square with [lane] wide margins around it.
   static Offset center(int slot, double board, double lane) {
-    if (slot < 3) return Offset(board * _across[slot], -lane / 2);
-    if (slot < 6) return Offset(board * _across[slot - 3], board + lane / 2);
-    if (slot < 8) return Offset(-lane / 2, board * _down[slot - 6]);
-    return Offset(board + lane / 2, board * _down[slot - 8]);
+    const row = StickerSlots.rowCount;
+    const side = StickerSlots.sideCount;
+    if (slot < row) return Offset(board * _across[slot], -lane / 2);
+    if (slot < row * 2) {
+      return Offset(board * _across[slot - row], board + lane / 2);
+    }
+    if (slot < row * 2 + side) {
+      return Offset(-lane / 2, board * _down[slot - row * 2]);
+    }
+    return Offset(board + lane / 2, board * _down[slot - row * 2 - side]);
   }
 
   static double tilt(int slot) => _tilts[slot % _tilts.length];
@@ -134,7 +152,7 @@ class _StickerPainter extends CustomPainter {
   final bool silhouette;
   final double devicePixelRatio;
 
-  /// The decor screen shows the 25 tray stickers and up to 10 slots.
+  /// The decor screen shows the 25 tray stickers and up to 16 slots.
   static final ArtRasterCache _rasters = ArtRasterCache(maxEntries: 64);
 
   @override

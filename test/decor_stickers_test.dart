@@ -181,6 +181,20 @@ List<Rect> _boardStickerRects(WidgetTester tester) {
   ];
 }
 
+/// No two circles inscribed in [rects] overlap.
+void _expectApart(List<Rect> rects) {
+  for (var i = 0; i < rects.length; i++) {
+    for (var j = i + 1; j < rects.length; j++) {
+      final gap = (rects[i].center - rects[j].center).distance;
+      expect(
+        gap,
+        greaterThanOrEqualTo((rects[i].width + rects[j].width) / 2 - 0.01),
+        reason: '${rects[i]} and ${rects[j]}',
+      );
+    }
+  }
+}
+
 void main() {
   testWidgets('decor screen places, swaps and removes stickers', (
     tester,
@@ -469,7 +483,8 @@ void main() {
       final grid = tester.getRect(find.byType(GridView));
       final board = tester.getRect(find.byKey(const ValueKey('board-content')));
       final rects = _boardStickerRects(tester);
-      expect(rects, hasLength(sides ? 10 : 6));
+      expect(rects, hasLength(sides ? 16 : 10));
+      _expectApart(rects);
       for (final rect in rects) {
         expect(rect.overlaps(grid), isFalse);
         expect(rect.overlaps(board), isFalse);

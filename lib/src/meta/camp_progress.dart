@@ -370,6 +370,7 @@ class CampProgress {
     'selectedTheme': selectedTheme.name,
     if (activeRun != null) 'activeRun': activeRun,
     'stickerSlots': stickerSlots.toJson(),
+    'stickerSlotsVersion': StickerSlots.layoutVersion,
     if (stickersSeen != null) 'stickersSeen': stickersSeen,
     if (welcomeRun) 'welcomeRun': true,
   };
@@ -412,10 +413,14 @@ class CampProgress {
           : null,
       welcomeRun: json['welcomeRun'] == true,
     );
+    // Saves without a slot layout version use the ten-slot layout; any
+    // other version is read as the current one.
+    final layout = json['stickerSlotsVersion'];
     return progress._copy(
       stickerSlots: StickerSlots.fromJson(
         json['stickerSlots'],
         level: progress.stickerLevel,
+        legacy: layout == null || layout == 1,
       ),
     );
   }

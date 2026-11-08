@@ -79,17 +79,44 @@ class StickerAward {
 }
 
 /// Which sticker is stuck on each of the [count] fixed slots around the
-/// board. Slots 0-2 are above the board, 3-5 below, 6-7 left, 8-9 right.
-/// A sticker is on at most one slot and a slot holds at most one sticker.
+/// board. Slots 0-4 are above the board (left to right), 5-9 below (left to
+/// right), 10-12 left and 13-15 right (top to bottom). A sticker is on at
+/// most one slot and a slot holds at most one sticker.
+///
+/// Saves written before [layoutVersion] 2 used ten slots (0-2 above, 3-5
+/// below, 6-7 left, 8-9 right); [StickerSlots.fromJson] with `legacy: true`
+/// moves each of them to the matching slot of the same side
+/// ([legacySlotMap]).
 class StickerSlots {
   const StickerSlots.empty() : _slots = const <int, String>{};
 
   const StickerSlots._(this._slots);
 
-  static const int count = 10;
+  static const int count = 16;
 
-  /// Slots drawn next to the board even on narrow portrait screens.
-  static const int topBottomCount = 6;
+  /// Slots above the board (0-4); the next as many (5-9) are below it.
+  static const int rowCount = 5;
+
+  /// Slots on each of the left (10-12) and right (13-15) sides.
+  static const int sideCount = 3;
+
+  /// Slots drawn next to the board even on narrow portrait screens: the
+  /// rows above and below it.
+  static const int topBottomCount = rowCount * 2;
+
+  /// Slot numbering saved next to the placement (`stickerSlotsVersion`).
+  /// Saves without it use the ten-slot layout.
+  static const int layoutVersion = 2;
+
+  /// Number of slots in the ten-slot layout of older saves.
+  static const int legacyCount = 10;
+
+  /// New slot of each ten-slot layout slot: the three above go to the
+  /// middle three above (1-3), the three below to the middle three below
+  /// (6-8), the two left to the top and bottom left (10, 12) and the two
+  /// right to the top and bottom right (13, 15). Increasing, so the old
+  /// "lowest slot wins" order is kept.
+  static const List<int> legacySlotMap = [1, 2, 3, 6, 7, 8, 10, 12, 13, 15];
 
   final Map<int, String> _slots;
 
@@ -153,9 +180,16 @@ class StickerSlots {
 
   /// Tolerant parser: keeps every valid entry and drops stickers not owned
   /// at [level], slots out of range and repeats of a sticker (the lowest
-  /// slot wins). Anything that is not a map is an empty placement.
-  factory StickerSlots.fromJson(Object? json, {required int level}) {
+  /// slot wins). Anything that is not a map is an empty placement. With
+  /// [legacy] the keys are ten-slot layout slots and move to their new
+  /// slots ([legacySlotMap]).
+  factory StickerSlots.fromJson(
+    Object? json, {
+    required int level,
+    bool legacy = false,
+  }) {
     if (json is! Map) return const StickerSlots.empty();
+    final range = legacy ? legacyCount : count;
     final entries = <int, String>{};
     for (final entry in json.entries) {
       final key = entry.key;
@@ -163,11 +197,11 @@ class StickerSlots {
       if (key is! String || value is! String) continue;
       if (key.isEmpty || key.length > 2) continue;
       final slot = int.tryParse(key);
-      if (slot == null || slot < 0 || slot >= count || '$slot' != key) {
+      if (slot == null || slot < 0 || slot >= range || '$slot' != key) {
         continue;
       }
       if (!(Sticker.byId(value)?.isOwnedAt(level) ?? false)) continue;
-      entries[slot] = value;
+      entries[legacy ? legacySlotMap[slot] : slot] = value;
     }
     final kept = <int, String>{};
     final seen = <String>{};

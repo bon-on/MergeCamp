@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:merge_camp/src/art/sticker_art.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_theme.dart';
 import 'package:merge_camp/src/meta/stickers.dart';
@@ -85,26 +86,27 @@ void main() {
       expect(s.at(4), 'acorn');
       expect(s.at(0), 'pennant');
       // Slot sticker onto an empty slot: it moves.
-      s = s.put('acorn', 9);
-      expect(s.at(9), 'acorn');
+      s = s.put('acorn', 15);
+      expect(s.at(15), 'acorn');
       expect(s.at(4), isNull);
       expect(s.length, 2);
-      s = s.remove(9);
+      s = s.remove(15);
       expect(s.slotOf('acorn'), isNull);
       expect(identical(s.remove(5), s), isTrue);
       expect(identical(s.put('nope', 1), s), isTrue);
-      expect(identical(s.put('acorn', 10), s), isTrue);
+      expect(identical(s.put('acorn', 16), s), isTrue);
+      expect(identical(s.put('acorn', -1), s), isTrue);
       expect(identical(s.put('pennant', 0), s), isTrue);
     });
 
     test('json round trip', () {
-      final s = slotsOf({0: 'pennant', 3: 'acorn', 9: 'spark'});
+      final s = slotsOf({0: 'pennant', 3: 'acorn', 9: 'spark', 15: 'mug'});
       final back = StickerSlots.fromJson(
         jsonDecode(jsonEncode(s.toJson())),
-        level: 5,
+        level: 8,
       );
       expect(back, s);
-      expect(back.signature, '0=pennant,3=acorn,9=spark');
+      expect(back.signature, '0=pennant,3=acorn,9=spark,15=mug');
     });
 
     test('parser drops unowned, out of range and repeated stickers', () {
@@ -113,7 +115,8 @@ void main() {
         '1': 'star-badge', // not owned at level 3
         '2': 'acorn',
         '5': 'pennant', // repeat: slot 0 wins
-        '10': 'pine-tree', // out of range
+        '16': 'pine-tree', // out of range
+        '100': 'pine-tree',
         '-1': 'pine-tree',
         '01': 'pine-tree',
         'x': 'pine-tree',
@@ -235,17 +238,19 @@ void main() {
     });
 
     test('with every slot taken a new sticker stays in the tray', () {
-      var p = atLevel(10, seen: 10);
+      var p = atLevel(16, seen: 16);
       for (var slot = 0; slot < StickerSlots.count; slot++) {
         p = p.withSticker(Sticker.catalog[slot].id, slot);
       }
+      expect(p.stickerSlots.length, 16);
+      expect(p.stickerSlots.firstEmpty, isNull);
       final need = p.xpForNextLevel - p.xpIntoLevel;
       final outcome = p.applyRun(runWithXp(need));
-      expect(outcome.levelAfter, 11);
-      expect(outcome.newStickers.single.sticker.id, 'binoculars');
+      expect(outcome.levelAfter, 17);
+      expect(outcome.newStickers.single.sticker.id, 'canoe');
       expect(outcome.newStickers.single.slot, isNull);
       expect(outcome.progress.stickerSlots, p.stickerSlots);
-      expect(outcome.progress.stickerTray.map((s) => s.id), ['binoculars']);
+      expect(outcome.progress.stickerTray.map((s) => s.id), ['canoe']);
     });
 
     test('levels past the catalog award no sticker', () {
@@ -278,6 +283,188 @@ void main() {
         'stickersSeen': json['stickersSeen'],
       }).length;
       expect(size, lessThan(1024));
+    });
+  });
+
+  group('slot layout migration', () {
+    /// A ten-slot layout save as written before the 16-slot layout: no
+    /// `stickerSlotsVersion`, slots 0-2 above, 3-5 below, 6-7 left, 8-9 right.
+    Map<String, Object?> legacySave(Map<String, Object?> slots, int level) => {
+      'bestScore': 10,
+      'discoveredTiers': [1],
+      'totalXp': xpForLevel(level),
+      'selectedTheme': 'summer',
+      'stickerSlots': slots,
+      'stickersSeen': level,
+    };
+
+    const legacyFull = {
+      '0': 'pennant',
+      '1': 'pine-tree',
+      '2': 'acorn',
+      '3': 'lantern',
+      '4': 'spark',
+      '5': 'marshmallow',
+      '6': 'compass',
+      '7': 'mug',
+      '8': 'hiking-boot',
+      '9': 'moon',
+    };
+
+    String side(int slot) {
+      final c = StickerSlotGeometry.center(slot, 100, 10);
+      if (c.dy < 0) return 'top';
+      if (c.dy > 100) return 'bottom';
+      return c.dx < 0 ? 'left' : 'right';
+    }
+
+    test('the new layout has 5 above, 5 below, 3 left and 3 right', () {
+      final sides = [for (var i = 0; i < StickerSlots.count; i++) side(i)];
+      expect(sides, [
+        ...List.filled(5, 'top'),
+        ...List.filled(5, 'bottom'),
+        ...List.filled(3, 'left'),
+        ...List.filled(3, 'right'),
+      ]);
+      for (var i = 0; i < StickerSlots.count; i++) {
+        expect(StickerSlotGeometry.isSide(i), i >= 10);
+      }
+      // Rows run left to right and sides top to bottom.
+      for (final run in const [
+        [0, 1, 2, 3, 4],
+        [5, 6, 7, 8, 9],
+      ]) {
+        final xs = [
+          for (final i in run) StickerSlotGeometry.center(i, 100, 10).dx,
+        ];
+        expect(xs, orderedEquals([...xs]..sort()));
+      }
+      for (final run in const [
+        [10, 11, 12],
+        [13, 14, 15],
+      ]) {
+        final ys = [
+          for (final i in run) StickerSlotGeometry.center(i, 100, 10).dy,
+        ];
+        expect(ys, orderedEquals([...ys]..sort()));
+      }
+      expect(StickerSlots.legacySlotMap, hasLength(StickerSlots.legacyCount));
+      expect(StickerSlots.legacySlotMap.toSet(), hasLength(10));
+    });
+
+    test('a full ten-slot save keeps every sticker on its side', () {
+      final p = CampProgress.fromJson(
+        jsonDecode(jsonEncode(legacySave(legacyFull, 10))),
+      );
+      expect(p.stickerSlots.toJson(), {
+        '1': 'pennant',
+        '2': 'pine-tree',
+        '3': 'acorn',
+        '6': 'lantern',
+        '7': 'spark',
+        '8': 'marshmallow',
+        '10': 'compass',
+        '12': 'mug',
+        '13': 'hiking-boot',
+        '15': 'moon',
+      });
+      // Old slot sides: 0-2 top, 3-5 bottom, 6-7 left, 8-9 right.
+      const oldSides = [
+        'top',
+        'top',
+        'top',
+        'bottom',
+        'bottom',
+        'bottom',
+        'left',
+        'left',
+        'right',
+        'right',
+      ];
+      for (var old = 0; old < 10; old++) {
+        final id = legacyFull['$old']!;
+        expect(side(p.stickerSlots.slotOf(id)!), oldSides[old], reason: id);
+      }
+      expect(p.stickerSlots.length, 10);
+      expect(p.stickerTray, isEmpty);
+      // The next level-up fills the free left end of the top row.
+      final outcome = p.applyRun(runWithXp(p.xpForNextLevel - p.xpIntoLevel));
+      expect(outcome.newStickers.single.sticker.id, 'binoculars');
+      expect(outcome.newStickers.single.slot, 0);
+    });
+
+    test('a migrated save round trips without moving again', () {
+      final migrated = CampProgress.fromJson(legacySave(legacyFull, 10));
+      final json = jsonDecode(jsonEncode(migrated.toJson())) as Map;
+      expect(json['stickerSlotsVersion'], StickerSlots.layoutVersion);
+      final back = CampProgress.fromJson(json);
+      expect(back.stickerSlots, migrated.stickerSlots);
+      final again = CampProgress.fromJson(
+        jsonDecode(jsonEncode(back.toJson())),
+      );
+      expect(again.stickerSlots, migrated.stickerSlots);
+    });
+
+    test('new saves load every slot as is, sides included', () {
+      var p = atLevel(16, seen: 16);
+      for (var slot = 0; slot < StickerSlots.count; slot++) {
+        p = p.withSticker(Sticker.catalog[15 - slot].id, slot);
+      }
+      final back = CampProgress.fromJson(jsonDecode(jsonEncode(p.toJson())));
+      expect(back.stickerSlots, p.stickerSlots);
+      expect(back.stickerSlots.at(15), 'pennant');
+      expect(back.stickerSlots.at(10), 'marshmallow');
+    });
+
+    test('layout version 1 or none migrates, anything else is current', () {
+      final slots = {'0': 'pennant', '9': 'acorn'};
+      for (final version in [null, 1, 1.0]) {
+        final json = legacySave(slots, 3);
+        if (version != null) json['stickerSlotsVersion'] = version;
+        expect(CampProgress.fromJson(json).stickerSlots.toJson(), {
+          '1': 'pennant',
+          '15': 'acorn',
+        }, reason: '$version');
+      }
+      for (final version in [2, 3, 'x', <Object>[], true]) {
+        final json = legacySave(slots, 3)..['stickerSlotsVersion'] = version;
+        expect(CampProgress.fromJson(json).stickerSlots.toJson(), {
+          '0': 'pennant',
+          '9': 'acorn',
+        }, reason: '$version');
+      }
+    });
+
+    test('legacy parsing tolerates bad data like the current one', () {
+      final p = CampProgress.fromJson(
+        legacySave({
+          '0': 'pennant',
+          '1': 'star-badge', // not owned at level 3
+          '2': 'acorn',
+          '5': 'pennant', // repeat: old slot 0 wins
+          '10': 'pine-tree', // out of the ten-slot range
+          '15': 'pine-tree',
+          '-1': 'pine-tree',
+          '07': 'pine-tree',
+          'x': 'pine-tree',
+          '3': 7,
+          '4': 'unknown',
+          '8': 'pine-tree',
+        }, 3),
+      );
+      expect(p.stickerSlots.toJson(), {
+        '1': 'pennant',
+        '3': 'acorn',
+        '13': 'pine-tree',
+      });
+      for (final bad in [null, 'x', 3, <Object>[], <String, Object>{}]) {
+        final json = legacySave(legacyFull, 10)..['stickerSlots'] = bad;
+        expect(CampProgress.fromJson(json).stickerSlots.isEmpty, isTrue);
+        expect(
+          StickerSlots.fromJson(bad, level: 25, legacy: true).isEmpty,
+          isTrue,
+        );
+      }
     });
   });
 }
