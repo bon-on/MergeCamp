@@ -29,6 +29,7 @@ MergeCamp 웹 빌드는 GitHub Pages에서 광고 없이만 실행된다. CrazyG
   - `SDK.init()` 후 `environment`가 `crazygames` 또는 `local`일 때만 SDK를 호출한다.
   - 첫 프레임 이후 `gameplayStart`, 게임 오버 시 `gameplayStop`을 호출한다.
   - 게임 오버 후 플레이어가 재시작하면 `midgame` 광고를 요청하고, 광고가 끝나거나 실패한 뒤 새 판을 시작하고 `gameplayStart`를 호출한다.
+  - 앱이나 브라우저 탭이 숨겨지면(`AppLifecycleState`가 `resumed`가 아님) `gameplayStop`을 호출하고, 다시 보이면 다른 차단 조건이 없을 때만 `gameplayStart`를 호출한다. 전환 시점에만 호출한다.
   - 광고 재생 중과 SDK `muteAudio` 설정이 켜진 동안 효과음을 끈다.
 - 웹에서도 번들 효과음 자산을 재생한다.
 - 데스크톱 가로 화면에서 플레이 영역 폭을 제한해 가운데 정렬하고, 타일 위에서 클릭 커서를 보여준다.
@@ -53,6 +54,7 @@ MergeCamp 웹 빌드는 GitHub Pages에서 광고 없이만 실행된다. CrazyG
 - CrazyGames 빌드에서는 게임 오버 후 리더보드 등록 안내가 뜨지 않는다. GitHub Pages와 모바일 빌드에서는 그대로 뜬다.
 - SDK가 없거나 `environment`가 `disabled`이거나 SDK 호출이 실패해도 게임은 광고 없이 계속 플레이된다.
 - 게임 오버 후 재시작은 광고 요청이 끝날 때까지 새 판을 시작하지 않고, 진행 중 재시작은 광고를 요청하지 않는다.
+- 앱이 숨겨지면 `gameplayStop`이 한 번만 호출되고, 복귀 시 `gameplayStart`가 호출된다. 숨겨진 동안 게임 오버가 되면 복귀해도 시작하지 않는다.
 - 위젯 테스트로 `gameplayStart`/`gameplayStop`/광고 요청 순서를 검증한다.
 
 ## Constraints

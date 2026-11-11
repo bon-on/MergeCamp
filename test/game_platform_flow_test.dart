@@ -89,6 +89,38 @@ void main() {
     expect(platform.events, <String>['start']);
   });
 
+  testWidgets('hiding the app stops gameplay once and showing restarts it', (
+    tester,
+  ) async {
+    final platform = _FakePlatform();
+    final controller = MergeCampController();
+    addTearDown(controller.dispose);
+    await _pumpScreen(tester, platform, controller);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(platform.events, <String>['start', 'stop']);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(platform.events, <String>['start', 'stop', 'start']);
+
+    // A game over while hidden must not restart gameplay on resume.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    _loadOneMoveFromGameOver(controller);
+    controller.place(15);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(platform.events, <String>['start', 'stop', 'start', 'stop']);
+  });
+
   testWidgets('game over stops gameplay and restart waits for the break ad', (
     tester,
   ) async {

@@ -114,6 +114,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   // Whether the platform currently believes gameplay is running.
   bool _gameplayActive = false;
+  // False while the app or browser tab is hidden; gameplay is not running then.
+  bool _appActive =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
   // Meta progress. Changes made before the stored value has loaded are
   // merged into it once it arrives.
@@ -168,15 +172,20 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       ..addListener(_onChanged);
     _wasGameOver = _controller.isGameOver;
     _seenPlacements = _controller.placements;
-    _lifecycle = AppLifecycleListener(
-      onStateChange: (state) => _feedback.setAppVisible(
-        state == AppLifecycleState.resumed ||
-            state == AppLifecycleState.inactive,
-      ),
-    );
+    _lifecycle = AppLifecycleListener(onStateChange: _onAppLifecycleChanged);
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     // Portal mute settings and ads can change the platform mute at any time.
     widget.platform.setAudioMuteListener(_feedback.refreshMute);
+  }
+
+  void _onAppLifecycleChanged(AppLifecycleState state) {
+    _feedback.setAppVisible(
+      state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
+    );
+    final active = state == AppLifecycleState.resumed;
+    if (_appActive == active) return;
+    _appActive = active;
+    _syncGameplay();
   }
 
   Future<void> _loadSoundMuted() async {
@@ -830,6 +839,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   /// run is not over (the run summary is up while it is).
   void _syncGameplay() {
     final wantActive =
+        _appActive &&
         !_tutorialBlocking &&
         !_controller.isGameOver &&
         !_albumOpen &&
