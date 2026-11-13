@@ -462,6 +462,7 @@ class MergeCampController extends ChangeNotifier {
     int lastAwardedAxeAt = 0,
     List<int>? previewTiers,
     bool isGameOver = false,
+    int mergeCount = 0,
   }) {
     _board = List<int?>.from(board);
     _previewTiers
@@ -475,7 +476,7 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = isGameOver;
-    _mergeCount = 0;
+    _mergeCount = mergeCount;
     _lastPlacedIndex = null;
     _lastMergeSteps = const <MergeStep>[];
   }

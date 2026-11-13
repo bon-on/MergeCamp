@@ -45,6 +45,9 @@ class CampHudLayout extends StatelessWidget {
     required this.onOpenAlbum,
     required this.onOpenDecor,
     required this.onOpenHelp,
+    required this.onOpenDaily,
+    required this.dailyOpen,
+    required this.dailyTooltip,
     required this.onToggleSound,
     required this.onRestart,
     required this.onToggleTrailAxe,
@@ -74,6 +77,11 @@ class CampHudLayout extends StatelessWidget {
   final VoidCallback onOpenAlbum;
   final VoidCallback onOpenDecor;
   final VoidCallback onOpenHelp;
+  final VoidCallback onOpenDaily;
+
+  /// Today's Daily Camp is not rewarded yet (shows a dot on its button).
+  final bool dailyOpen;
+  final String dailyTooltip;
   final VoidCallback onToggleSound;
   final VoidCallback onRestart;
   final VoidCallback onToggleTrailAxe;
@@ -211,13 +219,27 @@ class CampHudLayout extends StatelessWidget {
     return 'Connect 3 matching camps to merge them.';
   }
 
-  List<Widget> _menuButtons(CampPalette palette, double size) => [
+  List<Widget> _menuButtons(
+    CampPalette palette,
+    double size, {
+    bool shrink = false,
+  }) => [
+    PanelIconButton(
+      palette: palette,
+      icon: Icons.local_fire_department_rounded,
+      tooltip: dailyTooltip,
+      onPressed: onOpenDaily,
+      size: size,
+      shrinkTap: shrink,
+      badge: dailyOpen,
+    ),
     PanelIconButton(
       palette: palette,
       icon: Icons.collections_bookmark_rounded,
       tooltip: 'Camp album',
       onPressed: onOpenAlbum,
       size: size,
+      shrinkTap: shrink,
     ),
     PanelIconButton(
       palette: palette,
@@ -225,6 +247,7 @@ class CampHudLayout extends StatelessWidget {
       tooltip: 'Decorate',
       onPressed: onOpenDecor,
       size: size,
+      shrinkTap: shrink,
     ),
     PanelIconButton(
       palette: palette,
@@ -232,6 +255,7 @@ class CampHudLayout extends StatelessWidget {
       tooltip: 'How to play',
       onPressed: onOpenHelp,
       size: size,
+      shrinkTap: shrink,
     ),
     PanelIconButton(
       palette: palette,
@@ -239,6 +263,7 @@ class CampHudLayout extends StatelessWidget {
       tooltip: soundMuted ? 'Sound off' : 'Sound on',
       onPressed: onToggleSound,
       size: size,
+      shrinkTap: shrink,
     ),
     PanelIconButton(
       palette: palette,
@@ -246,6 +271,7 @@ class CampHudLayout extends StatelessWidget {
       tooltip: 'Restart run',
       onPressed: onRestart,
       size: size,
+      shrinkTap: shrink,
     ),
   ];
 
@@ -402,9 +428,16 @@ class CampHudLayout extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: _menuButtons(palette, 46),
+              // Six buttons: scale the row down instead of overflowing.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: 288,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: _menuButtons(palette, 46),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -503,7 +536,11 @@ class CampHudLayout extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            for (final button in _menuButtons(palette, buttonSize)) ...[
+            for (final button in _menuButtons(
+              palette,
+              buttonSize,
+              shrink: true,
+            )) ...[
               const SizedBox(width: 5),
               DecoratedBox(
                 decoration: BoxDecoration(

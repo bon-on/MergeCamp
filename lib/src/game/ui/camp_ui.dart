@@ -279,6 +279,8 @@ class PanelIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.size = 44,
+    this.badge = false,
+    this.shrinkTap = false,
   });
 
   final CampPalette palette;
@@ -287,8 +289,42 @@ class PanelIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final double size;
 
+  /// Small dot in the corner, e.g. for a daily that is still open.
+  final bool badge;
+
+  /// Lets the button take only [size] instead of the 48 px tap target, for
+  /// crowded header rows.
+  final bool shrinkTap;
+
   @override
   Widget build(BuildContext context) {
+    final button = _button();
+    if (!badge) return button;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        button,
+        Positioned(
+          right: size * 0.08,
+          top: size * 0.08,
+          child: IgnorePointer(
+            child: Container(
+              key: const ValueKey('daily-badge'),
+              width: size * 0.26,
+              height: size * 0.26,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5484D),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _button() {
     return IconButton(
       onPressed: onPressed,
       tooltip: tooltip,
@@ -296,6 +332,7 @@ class PanelIconButton extends StatelessWidget {
       constraints: BoxConstraints.tightFor(width: size, height: size),
       padding: EdgeInsets.zero,
       style: IconButton.styleFrom(
+        tapTargetSize: shrinkTap ? MaterialTapTargetSize.shrinkWrap : null,
         foregroundColor: palette.textPrimary,
         backgroundColor: palette.textSecondary.withValues(alpha: 0.12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

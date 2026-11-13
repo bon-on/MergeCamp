@@ -8,6 +8,7 @@ import '../../art/camp_palette.dart';
 import '../../art/camp_tile_art.dart';
 import '../../art/sticker_art.dart';
 import '../../meta/camp_progress.dart';
+import '../../meta/daily_camp.dart';
 import '../../meta/camp_theme.dart';
 import '../../meta/next_goal.dart';
 import '../merge_camp_controller.dart';
@@ -24,6 +25,7 @@ class RunReport {
     required this.bestChain,
     required this.missionsCompleted,
     this.outcome,
+    this.isDaily = false,
   });
 
   final int score;
@@ -33,6 +35,9 @@ class RunReport {
 
   /// Progress change of this run; null if it could not be applied.
   final RunOutcome? outcome;
+
+  /// The run was a Daily Camp run (feature-daily-camp).
+  final bool isDaily;
 }
 
 /// Renders the shared card; tests inject a fake.
@@ -51,6 +56,8 @@ class RunSummaryOverlay extends StatefulWidget {
     required this.onAlbum,
     required this.onDecorate,
     required this.playAgainFocus,
+    this.onDaily,
+    this.onFreePlay,
     this.board = const <int?>[],
     this.shareLink,
     this.share = const ResultShare(),
@@ -75,6 +82,12 @@ class RunSummaryOverlay extends StatefulWidget {
   final VoidCallback onPlayAgain;
   final VoidCallback onAlbum;
   final VoidCallback onDecorate;
+
+  /// Daily Camp entry for free-play summaries; null hides it.
+  final VoidCallback? onDaily;
+
+  /// Back to a random run from a daily summary; null hides it.
+  final VoidCallback? onFreePlay;
 
   /// Owned by the screen so it can refocus the button after the album.
   final FocusNode playAgainFocus;
@@ -291,7 +304,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
       CampButton(
         key: const ValueKey('summary-play-again'),
         palette: palette,
-        label: 'Play again',
+        label: widget.report.isDaily ? 'Try again' : 'Play again',
         icon: Icons.replay_rounded,
         height: _compact ? 54 : 60,
         fontSize: _compact ? 19 : 21,
@@ -303,6 +316,18 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         children: spaced([
           small('Album', Icons.collections_bookmark_rounded, widget.onAlbum),
           small('Decorate', Icons.auto_awesome_rounded, widget.onDecorate),
+          if (widget.report.isDaily && widget.onFreePlay != null)
+            small(
+              'Free play',
+              Icons.shuffle_rounded,
+              widget.busy ? null : widget.onFreePlay,
+            ),
+          if (!widget.report.isDaily && widget.onDaily != null)
+            small(
+              'Daily camp',
+              Icons.local_fire_department_rounded,
+              widget.busy ? null : widget.onDaily,
+            ),
         ]),
       ),
       if (link != null) ...[
@@ -584,12 +609,83 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
           const SizedBox(height: 14),
           _xpSection(palette, outcome),
         ],
+        if (report.isDaily) ...[
+          const SizedBox(height: 10),
+          _dailySection(palette, outcome),
+        ],
         if (nextGoals(widget.progress).length > 1) ...[
           const SizedBox(height: 8),
           PanelCaption('Other goals', palette: palette),
           _moreGoals(palette),
         ],
       ],
+    );
+  }
+
+  /// Daily Camp result: streak, bonus, today's best and the tomorrow line.
+  Widget _dailySection(CampPalette palette, RunOutcome? outcome) {
+    final daily = outcome?.daily;
+    final saved = widget.progress.daily;
+    final streak = saved.streak;
+    final String headline;
+    if (daily == null) {
+      headline = 'Place 5+ tiles and make a merge to count today.';
+    } else if (daily.rewarded) {
+      headline = daily.graceUsed
+          ? 'Streak saved by your grace! +${daily.bonusXp} XP'
+          : 'Daily streak $streak! +${daily.bonusXp} XP';
+    } else {
+      headline = 'Already counted today. Beat your best!';
+    }
+    final tomorrow = streak > 0 ? streak + 1 : 1;
+    return Container(
+      key: const ValueKey('summary-daily'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.textSecondary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 20,
+                color: palette.danger,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              if (saved.bestDay != null)
+                "Today's best ${formatScore(saved.bestScore)}"
+                    "${daily?.isDayBest == true ? ' (new!)' : ''}",
+              'Tomorrow: streak $tomorrow, +${dailyBonusXp(tomorrow)} XP',
+            ].join('  -  '),
+            key: const ValueKey('summary-daily-tomorrow'),
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

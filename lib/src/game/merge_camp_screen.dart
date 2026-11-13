@@ -11,6 +11,7 @@ import '../art/camp_scenery.dart';
 import '../art/camp_tile_art.dart';
 import '../audio/sound_mute_store.dart';
 import '../meta/camp_progress.dart';
+import '../meta/daily_camp.dart';
 import '../meta/camp_progress_store.dart';
 import '../meta/camp_theme.dart';
 import '../meta/missions.dart';
@@ -28,6 +29,9 @@ import 'ui/decor_overlay.dart';
 import 'ui/run_summary_overlay.dart';
 import '../../result_registration.dart';
 
+/// How a restart picks the next run.
+enum _RunMode { same, daily, free }
+
 class MergeCampScreen extends StatefulWidget {
   const MergeCampScreen({
     super.key,
@@ -40,6 +44,7 @@ class MergeCampScreen extends StatefulWidget {
     this.missions,
     this.animateArt = true,
     this.resultShare = const ResultShare(),
+    this.clock = DateTime.now,
   });
 
   final bool enableAds;
@@ -59,6 +64,9 @@ class MergeCampScreen extends StatefulWidget {
 
   /// Injected for tests (seeded missions); when null the screen owns one.
   final MissionBoard? missions;
+
+  /// Local time source; tests inject a fixed date for the Daily Camp.
+  final DateTime Function() clock;
 
   /// Looping art motion (tile loops, scenery, danger pulse). Tests turn it
   /// off so pumpAndSettle can settle; one-shot effects still play.
@@ -556,6 +564,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           bestChain: _controller.bestMergeChain,
           missionsCompleted: _missions.completedThisRun,
           outcome: _applyRun(),
+          isDaily: _controller.dailyDay != null,
         );
         _syncGameplay();
         if (widget.platform.allowsResultRegistration) {
@@ -734,7 +743,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (_runApplied) return null;
     _runApplied = true;
     if (_controller.placements <= 0) return null;
-    final outcome = _progress.applyRun(_runSummary);
+    final outcome = _progress.applyRun(
+      _runSummary,
+      dailyDay: _controller.dailyDay,
+    );
     _setProgress(outcome.progress, xpGained: outcome.xpGained);
     if (outcome.announcesLevelUp) {
       unawaited(_feedback.levelUp());
@@ -776,7 +788,45 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _feedback.refreshMute();
   }
 
-  Future<void> _restartRun() async {
+  /// Index of today's local date (for the Daily Camp).
+  int get _today => dayIndexOf(widget.clock());
+
+  bool get _dailyOpenToday => !_progress.daily.rewardedOn(_today);
+
+  String get _dailyTooltip {
+    final view = streakOn(_progress.daily, _today);
+    return view.current > 0
+        ? 'Daily camp (streak ${view.current})'
+        : 'Daily camp';
+  }
+
+  /// Starts or resumes today's Daily Camp from the header button.
+  Future<void> _openDaily() async {
+    if (_breakAdInProgress || _tutorialBlocking) return;
+    if (_guidedPractice) {
+      _toast(
+        'Finish the practice merge first.',
+        Icons.local_fire_department_rounded,
+      );
+      setState(() {});
+      return;
+    }
+    if (_controller.dailyDay == _today && !_controller.isGameOver) {
+      _toast('Daily camp: keep going!', Icons.local_fire_department_rounded);
+      setState(() {});
+      return;
+    }
+    await _restartRun(mode: _RunMode.daily);
+    if (!mounted) return;
+    setState(() {
+      _toast(
+        'Daily camp: same pieces for everyone today',
+        Icons.local_fire_department_rounded,
+      );
+    });
+  }
+
+  Future<void> _restartRun({_RunMode mode = _RunMode.same}) async {
     if (_breakAdInProgress || _tutorialBlocking) {
       return;
     }
@@ -830,7 +880,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _milestones.clear();
     _fx.clear();
     _chainLength = 0;
-    _controller.restart();
+    switch (mode) {
+      case _RunMode.same:
+        _controller.restart();
+      case _RunMode.daily:
+        _controller.startDaily(_today);
+      case _RunMode.free:
+        _controller.startFreePlay();
+    }
     _syncGameplay();
     _focusNode.requestFocus();
   }
@@ -1076,6 +1133,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             onOpenHelp: _openHowToPlay,
                             onToggleSound: _toggleSound,
                             onRestart: () => unawaited(_restartRun()),
+                            onOpenDaily: () => unawaited(_openDaily()),
+                            dailyOpen: _progressLoaded && _dailyOpenToday,
+                            dailyTooltip: _dailyTooltip,
                             onToggleTrailAxe: _toggleTrailAxe,
                             onChainDone: () {
                               if (mounted) setState(() => _chainLength = 0);
@@ -1122,6 +1182,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                         onPlayAgain: () => unawaited(_restartRun()),
                         onAlbum: _openAlbum,
                         onDecorate: _openDecor,
+                        onFreePlay: () =>
+                            unawaited(_restartRun(mode: _RunMode.free)),
+                        onDaily: _dailyOpenToday
+                            ? () => unawaited(_openDaily())
+                            : null,
                       ),
                     ),
                   ),
