@@ -40,8 +40,7 @@ List<_Call> _recordChannel() {
   return calls;
 }
 
-List<String> _methods(List<_Call> calls) =>
-    calls.map((c) => c.method).toList();
+List<String> _methods(List<_Call> calls) => calls.map((c) => c.method).toList();
 
 /// Web double: records calls; loop/resume results are scriptable.
 class _FakeWebSound extends WebSound {
@@ -105,15 +104,12 @@ void main() {
       await fx.mission();
       await fx.levelUp();
       expect(_methods(calls), ['play', 'play', 'play', 'play']);
-      expect(
-        calls.map((c) => (c.arguments as Map)['asset']),
-        [
-          'assets/audio/chain.wav',
-          'assets/audio/discover.wav',
-          'assets/audio/mission.wav',
-          'assets/audio/level_up.wav',
-        ],
-      );
+      expect(calls.map((c) => (c.arguments as Map)['asset']), [
+        'assets/audio/chain.wav',
+        'assets/audio/discover.wav',
+        'assets/audio/mission.wav',
+        'assets/audio/level_up.wav',
+      ]);
       for (final c in calls) {
         expect((c.arguments as Map)['volume'], 1.0);
       }
@@ -285,11 +281,7 @@ void main() {
     test('mute pauses, unmute resumes, stopMusic stops', () async {
       final web = _FakeWebSound();
       var muted = false;
-      final fx = FeedbackFx(
-        webSound: web,
-        isWeb: true,
-        isMuted: () => muted,
-      );
+      final fx = FeedbackFx(webSound: web, isWeb: true, isMuted: () => muted);
       fx.onUserInput();
       fx.startMusic();
       await _settle();
@@ -323,11 +315,7 @@ void main() {
     test('muting while the browser is starting playback pauses it', () async {
       final web = _FakeWebSound();
       var muted = false;
-      final fx = FeedbackFx(
-        webSound: web,
-        isWeb: true,
-        isMuted: () => muted,
-      );
+      final fx = FeedbackFx(webSound: web, isWeb: true, isMuted: () => muted);
       fx.onUserInput();
       fx.startMusic(); // loop() future pending
       muted = true;
@@ -340,11 +328,7 @@ void main() {
     test('effects pass a volume on web and respect mute', () async {
       final web = _FakeWebSound();
       var muted = true;
-      final fx = FeedbackFx(
-        webSound: web,
-        isWeb: true,
-        isMuted: () => muted,
-      );
+      final fx = FeedbackFx(webSound: web, isWeb: true, isMuted: () => muted);
       await fx.chain(2);
       expect(web.log, isEmpty);
       muted = false;
@@ -358,27 +342,33 @@ void main() {
   });
 
   group('assets', () {
-    test('every audio asset referenced by FeedbackFx exists and is bundled', () {
-      final source = File('lib/src/game/feedback_fx.dart').readAsStringSync();
-      final paths = RegExp(
-        r"'(assets/audio/[a-z_]+\.wav)'",
-      ).allMatches(source).map((m) => m.group(1)!).toSet();
-      expect(paths, containsAll(<String>[
-        'assets/audio/place.wav',
-        'assets/audio/merge.wav',
-        'assets/audio/warning.wav',
-        'assets/audio/chain.wav',
-        'assets/audio/discover.wav',
-        'assets/audio/mission.wav',
-        'assets/audio/level_up.wav',
-        'assets/audio/music_loop.wav',
-      ]));
-      final pubspec = File('pubspec.yaml').readAsStringSync();
-      expect(pubspec, contains('- assets/audio/'));
-      for (final path in paths) {
-        expect(File(path).existsSync(), isTrue, reason: path);
-      }
-    });
+    test(
+      'every audio asset referenced by FeedbackFx exists and is bundled',
+      () {
+        final source = File('lib/src/game/feedback_fx.dart').readAsStringSync();
+        final paths = RegExp(
+          r"'(assets/audio/[a-z_]+\.wav)'",
+        ).allMatches(source).map((m) => m.group(1)!).toSet();
+        expect(
+          paths,
+          containsAll(<String>[
+            'assets/audio/place.wav',
+            'assets/audio/merge.wav',
+            'assets/audio/warning.wav',
+            'assets/audio/chain.wav',
+            'assets/audio/discover.wav',
+            'assets/audio/mission.wav',
+            'assets/audio/level_up.wav',
+            'assets/audio/music_loop.wav',
+          ]),
+        );
+        final pubspec = File('pubspec.yaml').readAsStringSync();
+        expect(pubspec, contains('- assets/audio/'));
+        for (final path in paths) {
+          expect(File(path).existsSync(), isTrue, reason: path);
+        }
+      },
+    );
 
     test('music loop is mono 16-bit 16000 Hz, 24-32 s and at most 1 MB', () {
       final bytes = File('assets/audio/music_loop.wav').readAsBytesSync();
