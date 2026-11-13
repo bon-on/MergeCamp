@@ -29,14 +29,14 @@ class BoardGeometry {
 /// Timing of the merge presentation. Rules apply instantly; these effects
 /// only trail behind the real board state.
 class FxTiming {
-  static const Duration drop = Duration(milliseconds: 180);
-  static const Duration firstFlight = Duration(milliseconds: 110);
-  static const Duration stagger = Duration(milliseconds: 220);
-  static const Duration flight = Duration(milliseconds: 200);
-  static const Duration pop = Duration(milliseconds: 260);
-  static const Duration particles = Duration(milliseconds: 650);
-  static const Duration popup = Duration(milliseconds: 950);
-  static const Duration removal = Duration(milliseconds: 360);
+  static const Duration drop = Duration(milliseconds: 140);
+  static const Duration firstFlight = Duration(milliseconds: 70);
+  static const Duration stagger = Duration(milliseconds: 150);
+  static const Duration flight = Duration(milliseconds: 140);
+  static const Duration pop = Duration(milliseconds: 200);
+  static const Duration particles = Duration(milliseconds: 550);
+  static const Duration popup = Duration(milliseconds: 800);
+  static const Duration removal = Duration(milliseconds: 300);
 
   /// When the absorbed tiles of merge [chainIndex] (1-based) start flying.
   static Duration flightStart(int chainIndex) =>
