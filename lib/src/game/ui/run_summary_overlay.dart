@@ -25,7 +25,7 @@ class RunReport {
     required this.bestChain,
     required this.missionsCompleted,
     this.outcome,
-    this.isDaily = false,
+    this.dailyDay,
   });
 
   final int score;
@@ -36,8 +36,10 @@ class RunReport {
   /// Progress change of this run; null if it could not be applied.
   final RunOutcome? outcome;
 
-  /// The run was a Daily Camp run (feature-daily-camp).
-  final bool isDaily;
+  /// Day of the Daily Camp this run played, null for free play.
+  final int? dailyDay;
+
+  bool get isDaily => dailyDay != null;
 }
 
 /// Renders the shared card; tests inject a fake.
@@ -624,6 +626,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
 
   /// Daily Camp result: streak, bonus, today's best and the tomorrow line.
   Widget _dailySection(CampPalette palette, RunOutcome? outcome) {
+    final day = widget.report.dailyDay!;
     final daily = outcome?.daily;
     final saved = widget.progress.daily;
     final streak = saved.streak;
@@ -634,10 +637,15 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
       headline = daily.graceUsed
           ? 'Streak saved by your grace! +${daily.bonusXp} XP'
           : 'Daily streak $streak! +${daily.bonusXp} XP';
-    } else {
+    } else if (saved.lastDay == day) {
       headline = 'Already counted today. Beat your best!';
+    } else {
+      headline = 'No reward for this day.';
     }
-    final tomorrow = streak > 0 ? streak + 1 : 1;
+    // The streak a counted run on the next day would reach, from the saved
+    // counters (a broken streak starts again at 1).
+    final tomorrow = streakIfRewarded(saved, day + 1);
+    final todayBest = saved.bestScoreOn(day);
     return Container(
       key: const ValueKey('summary-daily'),
       padding: const EdgeInsets.all(12),
@@ -672,8 +680,8 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
           const SizedBox(height: 4),
           Text(
             [
-              if (saved.bestDay != null)
-                "Today's best ${formatScore(saved.bestScore)}"
+              if (todayBest > 0)
+                "Today's best ${formatScore(todayBest)}"
                     "${daily?.isDayBest == true ? ' (new!)' : ''}",
               'Tomorrow: streak $tomorrow, +${dailyBonusXp(tomorrow)} XP',
             ].join('  -  '),

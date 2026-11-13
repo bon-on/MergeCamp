@@ -564,7 +564,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           bestChain: _controller.bestMergeChain,
           missionsCompleted: _missions.completedThisRun,
           outcome: _applyRun(),
-          isDaily: _controller.dailyDay != null,
+          dailyDay: _controller.dailyDay,
         );
         _syncGameplay();
         if (widget.platform.allowsResultRegistration) {
@@ -882,7 +882,13 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _chainLength = 0;
     switch (mode) {
       case _RunMode.same:
-        _controller.restart();
+        // A daily run from an earlier day retries on today's camp.
+        final runDay = _controller.dailyDay;
+        if (runDay != null && runDay != _today) {
+          _controller.startDaily(_today);
+        } else {
+          _controller.restart();
+        }
       case _RunMode.daily:
         _controller.startDaily(_today);
       case _RunMode.free:

@@ -12,7 +12,7 @@
 | Check | Result |
 | --- | --- |
 | `flutter analyze --no-pub` | No issues |
-| `flutter test --no-pub` | 320 passed (new: timing, daily rules, controller sequence and snapshot, progress settlement, screen flows, 7 summary layouts) |
+| `flutter test --no-pub` | 322 passed (new: timing, daily rules, controller sequence and snapshot, progress settlement, screen flows, 7 summary layouts) |
 | `flutter test --no-pub --platform chrome test/web` | 23 passed, including `daily_camp_parity_test.dart` (VM and web draw the same sequence) |
 | `tool/build_crazygames.sh` | Built, 37 files, about 18.6 MB |
 | `flutter build web --release --base-href /MergeCamp/` | Built; no CrazyGames SDK in `index.html` |
@@ -35,3 +35,14 @@ the game has no network, so no run-length logging was added.
 - Whether the Daily Camp moves D1 retention or playtime. It can only be
   measured on the portal after release.
 - The thumbnail/CTR issue (0.4%, bottom 20%) is not addressed in code.
+
+## Review follow-up
+
+Independent review (approve with comments, no Critical/High) found: stale
+"Today's best" and "Tomorrow" lines in the summary, "Try again" after midnight
+replaying the previous day's camp, and a test that passed for the wrong reason.
+All three were fixed (summary lines now use the run's day and the streak rules,
+below-bar daily runs keep their score as the day's best, retry after midnight
+uses today's camp) and covered by new tests. The fixes were not re-reviewed.
+Known and accepted: the offline local-clock design lets a player move the
+clock forward to claim a daily per fake day.

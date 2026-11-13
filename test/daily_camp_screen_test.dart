@@ -6,6 +6,7 @@ import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_progress_store.dart';
+import 'package:merge_camp/src/meta/daily_camp.dart';
 import 'package:merge_camp/src/meta/missions.dart';
 import 'package:merge_camp/src/platform/game_platform.dart';
 
@@ -164,7 +165,8 @@ void main() {
     expect(find.byKey(const ValueKey('summary-daily')), findsOneWidget);
     expect(find.textContaining('Daily streak 1'), findsOneWidget);
     expect(find.textContaining('+40 XP'), findsOneWidget);
-    expect(find.text('Tomorrow: streak 2, +50 XP'), findsNothing);
+    expect(find.textContaining('Tomorrow: streak 2, +50 XP'), findsOneWidget);
+    expect(find.textContaining("Today's best"), findsOneWidget);
     expect(
       find.byKey(const ValueKey('summary-daily-tomorrow')),
       findsOneWidget,
@@ -229,6 +231,48 @@ void main() {
     await _qualifyingFinish(tester, h.controller);
     expect(find.textContaining('Daily streak 2'), findsOneWidget);
     expect(find.textContaining('+50 XP'), findsWidgets);
+  });
+
+  testWidgets('a stale streak does not leak into the summary lines', (
+    tester,
+  ) async {
+    const old = DailyCamp(
+      lastDay: 19990,
+      streak: 7,
+      best: 7,
+      bestDay: 19990,
+      bestScore: 900,
+      total: 7,
+    );
+    final h = await _pump(
+      tester,
+      progress: CampProgress.fromJson({
+        'bestScore': 900,
+        'totalXp': 500,
+        'daily': old.toJson(),
+      }),
+    );
+    await tester.tap(find.byTooltip('Daily camp'));
+    await tester.pump();
+    await _finishRun(tester, h.controller);
+    expect(find.textContaining('Tomorrow: streak 1, +40 XP'), findsOneWidget);
+    expect(find.textContaining("Today's best 120"), findsOneWidget);
+    expect(find.textContaining("Today's best 900"), findsNothing);
+  });
+
+  testWidgets('try again after midnight replays today\'s camp', (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.byTooltip('Daily camp'));
+    await tester.pump();
+    await _qualifyingFinish(tester, h.controller);
+    h.clockDay[0] = 20001;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(h.controller.dailyDay, 20001);
+    expect(
+      h.controller.previewTiers,
+      MergeCampController(dailyDay: 20001).previewTiers,
+    );
   });
 
   testWidgets('a short daily run does not count', (tester) async {

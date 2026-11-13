@@ -49,7 +49,9 @@ void main() {
       expect(few.progress.daily.streak, 1);
       final noMerge = day1.applyRun(_run(merges: 0), dailyDay: 101);
       expect(noMerge.daily, isNull);
-      expect(noMerge.progress.daily, same(day1.daily));
+      expect(noMerge.progress.daily.streak, day1.daily.streak);
+    expect(noMerge.progress.daily.total, day1.daily.total);
+    expect(noMerge.progress.daily.bestScoreOn(101), 1000);
       // The streak is still alive the next day.
       final day2 = few.progress.applyRun(_run(), dailyDay: 101);
       expect(day2.progress.daily.streak, 2);

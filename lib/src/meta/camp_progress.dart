@@ -334,13 +334,17 @@ class CampProgress {
     final dailyResult = countsDaily
         ? applyDaily(daily, dailyDay, summary.score)
         : null;
+    // A daily run below the bar still keeps its score as the day's best.
+    final dailyState =
+        dailyResult?.state ??
+        (dailyDay != null ? daily.withBest(dailyDay, summary.score) : null);
     final xp = runXp(summary) + (dailyResult?.bonusXp ?? 0);
     final isNewBest = summary.score > bestScore;
     var next = withActiveRun(null)._copy(
       bestScore: isNewBest ? summary.score : bestScore,
       totalXp: totalXp + xp,
       welcomeRun: false,
-      daily: dailyResult?.state,
+      daily: dailyState,
     );
     // The screen records every camp the moment it is built; the run only
     // guarantees its highest camp is in the album.

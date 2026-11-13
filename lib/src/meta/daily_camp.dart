@@ -109,6 +109,23 @@ class DailyCamp {
 
   static const DailyCamp none = DailyCamp();
 
+  /// Records [score] as the best of [day] for a run that did not count
+  /// (streak and bonus untouched). A day before the saved best day is ignored.
+  DailyCamp withBest(int day, int score) {
+    if (bestDay != null && day < bestDay!) return this;
+    if (bestScoreOn(day) >= score) return this;
+    return DailyCamp(
+      lastDay: lastDay,
+      streak: streak,
+      best: best,
+      graceReady: graceReady,
+      refillLeft: refillLeft,
+      total: total,
+      bestDay: day,
+      bestScore: score,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     if (lastDay != null) 'lastDay': lastDay,
     'streak': streak,
