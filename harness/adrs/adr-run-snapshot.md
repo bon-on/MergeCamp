@@ -5,6 +5,7 @@ status: accepted
 related_specs:
   - feature-first-run-resume
   - feature-first-minute-rewards
+  - feature-daily-camp
 ---
 
 # ADR: Persist live runs and meta progress in one local envelope
@@ -26,3 +27,6 @@ Controller keeps pure merge rules and exposes a side-effect-free preview. Final-
 - Unseen future pieces are re-rolled after a reload; acceptable without a competitive daily mode.
 - Input waits for the initial progress load, like it already waited for the tutorial flag.
 - feature-first-minute-rewards keeps `activeRun` unchanged. The welcome run's mid-run level-up only writes meta fields (`welcomeRun`, `stickersSeen`, sticker slots, the one-time welcome bonus XP); the run's own XP is still credited once, in the write that clears `activeRun`.
+
+## Addendum: Daily Camp marker (feature-daily-camp)
+The controller snapshot may carry an optional `daily: {day, draws}` marker. On restore the date-seeded generator is recreated and advanced by `draws` (three previews plus one per placement), so the unseen pieces of a daily run are the same as in an uninterrupted run. A malformed marker rejects the whole run snapshot (the run is dropped, meta progress is kept). Snapshots without the marker restore as free-play runs, as before. The daily streak counters live in the same `camp_progress_v1` JSON, so they are written, credited and cloud-synced with the same envelope.

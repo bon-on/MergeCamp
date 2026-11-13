@@ -1,0 +1,37 @@
+# Verification: faster merge timing and Daily Camp
+
+- Specs: `harness/specs/feature-merge-feel-timing.md`, `harness/specs/feature-daily-camp.md`
+- ADRs: `adr-merge-camp-flutter-foundation`, `adr-run-snapshot` (addendum), `adr-merge-camp-crazygames-web`
+- Date: 2026-11-13. Base: `d3d6ec8`.
+- Why: CrazyGames Basic Launch 2026-11-06..12 gave Desktop 5/15 and Mobile 4/15
+  (average playtime 5m01 / 4m30, D1 retention 1.44% / 0.00%). See
+  `reference-crazygames-basic-launch` in the project memory.
+
+## Checks run
+
+| Check | Result |
+| --- | --- |
+| `flutter analyze --no-pub` | No issues |
+| `flutter test --no-pub` | 320 passed (new: timing, daily rules, controller sequence and snapshot, progress settlement, screen flows, 7 summary layouts) |
+| `flutter test --no-pub --platform chrome test/web` | 23 passed, including `daily_camp_parity_test.dart` (VM and web draw the same sequence) |
+| `tool/build_crazygames.sh` | Built, 37 files, about 18.6 MB |
+| `flutter build web --release --base-href /MergeCamp/` | Built; no CrazyGames SDK in `index.html` |
+| Local Chrome render of the CrazyGames build (1568x706) | Six menu buttons fit in the side panel; the Daily button shows its dot |
+
+## Run length estimate (bot simulation, 400 seeds, real controller)
+
+Random placement: 27 / 36 / 48 placements (p10 / p50 / p90), mean 37.6.
+Greedy (merge-count based): 33 / 46 / 62, mean 46.3. At roughly 2-4 s per human
+placement a run lasts about 1.5-3 minutes, so a 4.5-5 minute average session is
+about two runs. Humans were not measured. The portal gives no per-run data and
+the game has no network, so no run-length logging was added.
+
+## Not verified
+
+- Real-device (iPhone Safari, mid-range Android) frame time and how the
+  shorter timeline feels. The timing change was only checked by unit test.
+- Phone-width visual check of the header with six buttons (only widget tests at
+  320x640 up to 1366x768, no overflow).
+- Whether the Daily Camp moves D1 retention or playtime. It can only be
+  measured on the portal after release.
+- The thumbnail/CTR issue (0.4%, bottom 20%) is not addressed in code.

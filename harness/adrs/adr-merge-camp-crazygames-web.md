@@ -11,6 +11,8 @@ related_specs:
   - feature-mobile-perf
   - feature-camp-stickers
   - feature-next-goal-share
+  - feature-daily-camp
+  - feature-merge-feel-timing
 ---
 
 # ADR: CrazyGames 배포에 빌드 플래그와 플랫폼 어댑터 사용
