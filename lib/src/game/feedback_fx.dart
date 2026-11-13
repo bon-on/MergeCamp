@@ -154,10 +154,7 @@ class FeedbackFx {
   }
 
   bool get _musicAllowed =>
-      _musicWanted &&
-      !_muted &&
-      _appVisible &&
-      (!_isWeb || _userInteracted);
+      _musicWanted && !_muted && _appVisible && (!_isWeb || _userInteracted);
 
   void _applyMusic() {
     try {
@@ -203,18 +200,16 @@ class FeedbackFx {
     final Future<bool> started = _webLoopStarted
         ? _webSound.resumeLoop()
         : _webSound.loop(musicAsset, volume: musicVolume);
-    started
-        .then<bool>((ok) => ok, onError: (Object _) => false)
-        .then((ok) {
-          _musicStarting = false;
-          if (!ok) {
-            return;
-          }
-          _webLoopStarted = true;
-          _musicPlaying = true;
-          // State may have changed while the browser was starting playback.
-          _applyMusic();
-        });
+    started.then<bool>((ok) => ok, onError: (Object _) => false).then((ok) {
+      _musicStarting = false;
+      if (!ok) {
+        return;
+      }
+      _webLoopStarted = true;
+      _musicPlaying = true;
+      // State may have changed while the browser was starting playback.
+      _applyMusic();
+    });
   }
 
   Future<void> _play(String method, String assetKey) async {

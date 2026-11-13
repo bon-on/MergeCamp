@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../meta/daily_camp.dart';
+
 enum MergeAction { placed, merged, removed, blocked, noTool, gameOver }
 
 class MergeResult {
@@ -35,8 +37,12 @@ class MergeStep {
 }
 
 class MergeCampController extends ChangeNotifier {
-  MergeCampController({Random? random, List<int>? scriptedTiers})
-    : _random = random ?? Random(),
+  MergeCampController({Random? random, List<int>? scriptedTiers, int? dailyDay})
+    : _baseRandom = random ?? Random(),
+      _random = dailyDay == null
+          ? (random ?? Random())
+          : SeededRandom(dailySeed(dailyDay)),
+      _dailyDay = dailyDay,
       _scriptedTiers = scriptedTiers,
       _board = List<int?>.filled(cellCount, null) {
     _previewTiers.addAll(
@@ -56,7 +62,13 @@ class MergeCampController extends ChangeNotifier {
   /// often so runs lean on building up rather than on direct high-tier drops.
   static const List<int> tierSpawnWeights = [8, 6, 4, 3, 2];
 
-  final Random _random;
+  // Random of free play; a daily run swaps in a date-seeded one.
+  final Random _baseRandom;
+  Random _random;
+  int? _dailyDay;
+
+  /// Random draws taken by this run's piece rolls (resumes a daily run).
+  int _draws = 0;
   final List<int>? _scriptedTiers;
   late List<int?> _board;
   int _scriptedIndex = 0;
@@ -106,12 +118,33 @@ class MergeCampController extends ChangeNotifier {
     return 'Crunch';
   }
 
+  /// Day of the Daily Camp run in progress, null in free play.
+  int? get dailyDay => _dailyDay;
+
   void restart() {
     _resetRun();
     notifyListeners();
   }
 
+  /// Starts today's Daily Camp: the same piece sequence for every player.
+  /// Restarting afterwards replays that sequence.
+  void startDaily(int day) {
+    _dailyDay = day;
+    _resetRun();
+    notifyListeners();
+  }
+
+  /// Back to a normal run with a random sequence.
+  void startFreePlay() {
+    _dailyDay = null;
+    _resetRun();
+    notifyListeners();
+  }
+
   void _resetRun() {
+    final day = _dailyDay;
+    _random = day == null ? _baseRandom : SeededRandom(dailySeed(day));
+    _draws = 0;
     _board = List<int?>.filled(cellCount, null);
     _score = 0;
     _highestTier = 1;
@@ -165,6 +198,7 @@ class MergeCampController extends ChangeNotifier {
     'bestMergeChain': _bestMergeChain,
     'mergeCount': _mergeCount,
     'isGameOver': _isGameOver,
+    if (_dailyDay != null) 'daily': {'day': _dailyDay, 'draws': _draws},
   };
 
   /// Rejects malformed snapshots before touching state or notifying listeners.
@@ -222,6 +256,29 @@ class MergeCampController extends ChangeNotifier {
         return false;
       }
     }
+
+    // A daily run resumes its own sequence: reseed and skip what was drawn.
+    int? day;
+    var random = _baseRandom;
+    var draws = 0;
+    final daily = data['daily'];
+    if (data.containsKey('daily')) {
+      if (daily is! Map ||
+          !integer(daily['day'], 0, 1 << 18) ||
+          daily['draws'] != previewCount + placements) {
+        return false;
+      }
+      day = daily['day'] as int;
+      draws = daily['draws'] as int;
+      final seeded = SeededRandom(dailySeed(day));
+      for (var i = 0; i < draws; i++) {
+        seeded.nextUint32();
+      }
+      random = seeded;
+    }
+    _dailyDay = day;
+    _random = random;
+    _draws = draws;
 
     _board = List<int?>.from(board);
     _previewTiers
@@ -442,6 +499,7 @@ class MergeCampController extends ChangeNotifier {
     }
     assert(tierSpawnWeights.length >= currentTierCap);
     final weights = tierSpawnWeights.take(currentTierCap);
+    _draws += 1;
     var roll = _random.nextInt(weights.reduce((a, b) => a + b));
     var tier = 1;
     for (final weight in weights) {

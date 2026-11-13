@@ -1,4 +1,5 @@
 import 'camp_theme.dart';
+import 'daily_camp.dart';
 import 'stickers.dart';
 
 /// Facts about one finished (or restarted) run, fed to [CampProgress.applyRun].
@@ -34,6 +35,7 @@ class RunOutcome {
     required this.newlyUnlockedThemes,
     this.newStickers = const <StickerAward>[],
     int? announcedLevel,
+    this.daily,
   }) : announcedLevel = announcedLevel ?? levelBefore;
 
   final CampProgress progress;
@@ -46,6 +48,10 @@ class RunOutcome {
 
   /// Stickers of the levels gained, in level order, with their auto slot.
   final List<StickerAward> newStickers;
+
+  /// Daily Camp result of this run; null for free play and for daily runs
+  /// below the participation bar.
+  final DailyResult? daily;
 
   /// Highest level already announced before the run ended: [levelBefore],
   /// or higher when the welcome run levelled up mid-run.
@@ -82,6 +88,7 @@ class CampProgress {
     this.stickerSlots = const StickerSlots.empty(),
     this.stickersSeen,
     this.welcomeRun = false,
+    this.daily = DailyCamp.none,
   });
 
   const CampProgress.initial()
@@ -92,6 +99,7 @@ class CampProgress {
       stickerSlots = const StickerSlots.empty(),
       stickersSeen = null,
       welcomeRun = false,
+      daily = DailyCamp.none,
       selectedTheme = CampTheme.summer;
 
   /// Highest camp tier that has an album entry.
@@ -131,6 +139,9 @@ class CampProgress {
   /// while set the run can level up to [welcomeLevel] mid-run.
   final bool welcomeRun;
 
+  /// Daily Camp streak and today's best score (feature-daily-camp).
+  final DailyCamp daily;
+
   CampProgress withActiveRun(Map<String, dynamic>? run) => CampProgress(
     bestScore: bestScore,
     discoveredTiers: Set.unmodifiable(discoveredTiers),
@@ -140,6 +151,7 @@ class CampProgress {
     stickerSlots: stickerSlots,
     stickersSeen: stickersSeen,
     welcomeRun: welcomeRun,
+    daily: daily,
   );
 
   /// XP needed to go from [level] to the next one.
@@ -298,7 +310,7 @@ class CampProgress {
     return _copy(selectedTheme: theme);
   }
 
-  RunOutcome applyRun(RunSummary summary) {
+  RunOutcome applyRun(RunSummary summary, {int? dailyDay}) {
     final levelBefore = level;
     // Only the welcome run's mid-run level-up counts as announced early; a
     // stickersSeen above the level from elsewhere keeps the old behaviour.
@@ -314,12 +326,21 @@ class CampProgress {
         newlyUnlockedThemes: const <CampTheme>[],
       );
     }
-    final xp = runXp(summary);
+    // A daily run counts like participation XP: enough placements and a merge.
+    final countsDaily =
+        dailyDay != null &&
+        summary.placements >= participationMinPlacements &&
+        summary.mergeCount > 0;
+    final dailyResult = countsDaily
+        ? applyDaily(daily, dailyDay, summary.score)
+        : null;
+    final xp = runXp(summary) + (dailyResult?.bonusXp ?? 0);
     final isNewBest = summary.score > bestScore;
     var next = withActiveRun(null)._copy(
       bestScore: isNewBest ? summary.score : bestScore,
       totalXp: totalXp + xp,
       welcomeRun: false,
+      daily: dailyResult?.state,
     );
     // The screen records every camp the moment it is built; the run only
     // guarantees its highest camp is in the album.
@@ -360,6 +381,7 @@ class CampProgress {
       ],
       newStickers: awards,
       announcedLevel: announced,
+      daily: dailyResult,
     );
   }
 
@@ -373,6 +395,7 @@ class CampProgress {
     'stickerSlotsVersion': StickerSlots.layoutVersion,
     if (stickersSeen != null) 'stickersSeen': stickersSeen,
     if (welcomeRun) 'welcomeRun': true,
+    if (daily.total > 0 || daily.bestDay != null) 'daily': daily.toJson(),
   };
 
   /// Tolerant parser: any missing or invalid field falls back on its own.
@@ -412,6 +435,7 @@ class CampProgress {
           ? seen.toInt()
           : null,
       welcomeRun: json['welcomeRun'] == true,
+      daily: DailyCamp.fromJson(json['daily']),
     );
     // Saves without a slot layout version use the ten-slot layout; any
     // other version is read as the current one.
@@ -433,6 +457,7 @@ class CampProgress {
     StickerSlots? stickerSlots,
     int? stickersSeen,
     bool? welcomeRun,
+    DailyCamp? daily,
   }) {
     return CampProgress(
       bestScore: bestScore ?? this.bestScore,
@@ -445,6 +470,7 @@ class CampProgress {
       stickerSlots: stickerSlots ?? this.stickerSlots,
       stickersSeen: stickersSeen ?? this.stickersSeen,
       welcomeRun: welcomeRun ?? this.welcomeRun,
+      daily: daily ?? this.daily,
     );
   }
 }

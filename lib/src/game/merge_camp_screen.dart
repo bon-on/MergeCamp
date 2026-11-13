@@ -229,6 +229,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         stickerSlots: loaded.stickerSlots,
         stickersSeen: loaded.stickersSeen,
         welcomeRun: loaded.welcomeRun,
+        daily: loaded.daily,
       );
     });
     _announceStickers();
