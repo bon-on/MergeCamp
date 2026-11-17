@@ -32,6 +32,7 @@ class CampHudLayout extends StatelessWidget {
     required this.cursor,
     this.guidedIndex,
     this.onSkipPractice,
+    this.coachHint,
     required this.trailAxeMode,
     required this.soundMuted,
     required this.loopingArt,
@@ -64,6 +65,9 @@ class CampHudLayout extends StatelessWidget {
   final int? cursor;
   final int? guidedIndex;
   final VoidCallback? onSkipPractice;
+
+  /// One-line next step shown on the board right after the practice merge.
+  final String? coachHint;
   final bool trailAxeMode;
   final bool soundMuted;
   final bool loopingArt;
@@ -104,6 +108,58 @@ class CampHudLayout extends StatelessWidget {
     );
   }
 
+  /// Caption strip over the bottom row of the board; it never takes taps
+  /// except its own optional skip button.
+  Widget _captionBar(
+    CampPalette palette,
+    String text, {
+    VoidCallback? onSkip,
+    Key? key,
+  }) {
+    return Positioned(
+      key: key,
+      left: 4,
+      right: 4,
+      bottom: 4,
+      // A strip without a button must not swallow taps on the bottom row.
+      child: IgnorePointer(
+        ignoring: onSkip == null,
+        child: Material(
+          color: palette.panel,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            // Wraps on small boards (360x640, 640x480) instead of overflowing.
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (onSkip != null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    onPressed: onSkip,
+                    child: const Text('Skip practice'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _board(
     CampPalette palette,
     bool loopingArt, {
@@ -125,43 +181,13 @@ class CampHudLayout extends StatelessWidget {
       onCellTap: onCellTap,
       overlays: [
         if (guidedIndex != null)
-          Positioned(
-            left: 4,
-            right: 4,
-            bottom: 4,
-            child: Material(
-              color: palette.panel,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                // Wraps on small boards (360x640, 640x480) instead of
-                // overflowing; it only ever covers the bottom row.
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 4,
-                  children: [
-                    Text(
-                      'Tap the glowing plot to merge!',
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      onPressed: onSkipPractice,
-                      child: const Text('Skip practice'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          _captionBar(
+            palette,
+            'Tap the glowing plot to merge!',
+            onSkip: onSkipPractice,
+          )
+        else if (coachHint != null)
+          _captionBar(palette, coachHint!, key: const ValueKey('coach-hint')),
         if (chainLength >= 2)
           Positioned.fill(
             child: ChainBanner(

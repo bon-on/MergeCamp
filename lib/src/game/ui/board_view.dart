@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../art/camp_palette.dart';
 import '../../art/camp_tile_art.dart';
 import '../../art/empty_plot_art.dart';
+import '../../art/tile_warmup.dart';
 import '../../meta/camp_theme.dart';
 import 'board_fx.dart';
 import '../merge_camp_controller.dart';
@@ -88,6 +89,10 @@ class _BoardViewState extends State<BoardView> {
         final inner = side - padding * 2;
         final gap = math.max(5.0, inner * 0.022);
         final geometry = BoardGeometry(side: inner, gap: gap);
+        final borderWidth = math.max(2.0, side * 0.006);
+        // The grid is inset by the border, so real tiles are a bit smaller
+        // than geometry.cell; the warm-up must use their exact size.
+        final tileCell = (inner - borderWidth * 2 - gap * 3) / 4;
         Widget content = Container(
           // Keeps the board element when the danger glow is added in front.
           key: const ValueKey('board-content'),
@@ -107,7 +112,7 @@ class _BoardViewState extends State<BoardView> {
             ),
             border: Border.all(
               color: Color.lerp(palette.groundBoard, Colors.black, 0.25)!,
-              width: math.max(2, side * 0.006),
+              width: borderWidth,
             ),
             boxShadow: const [
               BoxShadow(
@@ -154,6 +159,11 @@ class _BoardViewState extends State<BoardView> {
                     onTap: () => onCellTap(index),
                   ),
                 ),
+              ),
+              Positioned(
+                left: 0,
+                top: 0,
+                child: TileWarmup(cell: tileCell, theme: theme),
               ),
               Positioned.fill(
                 child: BoardFxLayer(fx: fx, geometry: geometry, theme: theme),

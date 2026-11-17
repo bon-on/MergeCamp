@@ -115,6 +115,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _starterPending = false;
   bool _starterPrepared = false;
   bool _guidedPractice = false;
+  // Next-step hint after the practice merge; ends after a few placements.
+  bool _coachActive = false;
   // Play was chosen on the first-run card before stored progress arrived.
   bool _practiceRequested = false;
   bool _restoringRun = false;
@@ -158,6 +160,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   /// Empty plot next to the two practice tents (see startGuidedRun).
   static const int _guidedPlot = 2;
+
+  /// The coach hint stays up until this many placements were made.
+  static const int _coachUntilPlacements = 3;
 
   bool get _tutorialBlocking =>
       _tutorialLoading || _showHowTo || !_progressLoaded;
@@ -545,8 +550,14 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           _controller.placements != _seenPlacements &&
           _controller.lastPlacedIndex != null;
       _seenPlacements = _controller.placements;
+      // Any restart (button, key, Daily) puts the board back at zero.
+      if (_controller.placements == 0) _coachActive = false;
       if (placed) {
+        if (_guidedPractice) _coachActive = true;
         _guidedPractice = false;
+        if (_controller.placements > _coachUntilPlacements) {
+          _coachActive = false;
+        }
         _afterPlacement();
       }
 
@@ -874,6 +885,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
     _trailAxeMode = false;
     _guidedPractice = false;
+    _coachActive = false;
     _report = null;
     _runApplied = false;
     _missions.reset();
@@ -1123,6 +1135,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             cursor: _cursor,
                             guidedIndex: _guidedPractice ? _guidedPlot : null,
                             onSkipPractice: _skipPractice,
+                            coachHint: _coachActive && !_controller.isGameOver
+                                ? 'Nice! Keep placing tiles - 3 touching matches merge.'
+                                : null,
                             trailAxeMode: _trailAxeMode,
                             soundMuted: _soundMuted,
                             loopingArt: loopingArt,
