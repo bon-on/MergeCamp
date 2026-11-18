@@ -87,7 +87,15 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   late final AppLifecycleListener _lifecycle;
   final BoardFx _fx = BoardFx();
   bool _trailAxeMode = false;
-  bool _shiftMode = false;
+  bool _shiftModeOn = false;
+  // Camp picked to step; the direction bar waits for it.
+  int? _shiftFrom;
+  bool get _shiftMode => _shiftModeOn;
+  set _shiftMode(bool on) {
+    _shiftModeOn = on;
+    if (!on) _shiftFrom = null;
+  }
+
   // Keyboard cursor; null until the player uses the keyboard.
   int? _cursor;
   // Game keys bubble up to this node from any focused child, so it never
@@ -616,10 +624,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
     final missionsDone = _settleMissions();
     if (_controller.lastEarnedShift) {
-      _toast(
-        'Shift earned! Slide every camp one way.',
-        Icons.open_with_rounded,
-      );
+      _toast('Shift earned! Move one camp a step.', Icons.open_with_rounded);
       if (missionsDone.isEmpty) unawaited(_feedback.mission());
     }
     _discoverTiers({
@@ -1014,13 +1019,27 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       return KeyEventResult.handled;
     }
     if (_shiftMode) {
-      final direction = _shiftDirectionOf(key);
+      if (key == LogicalKeyboardKey.escape) {
+        // First Esc drops the picked camp, the next one ends the mode.
+        if (!isRepeat) {
+          setState(() {
+            if (_shiftFrom != null) {
+              _shiftFrom = null;
+            } else {
+              _shiftMode = false;
+            }
+          });
+        }
+        return KeyEventResult.handled;
+      }
+      // With a camp picked the arrows choose its direction; before that
+      // they move the cursor like usual.
+      final direction = _shiftFrom == null ? null : _shiftDirectionOf(key);
       if (direction != null) {
         if (!isRepeat) unawaited(_applyShift(direction));
         return KeyEventResult.handled;
       }
-      if (key == LogicalKeyboardKey.escape) {
-        if (!isRepeat) setState(() => _shiftMode = false);
+      if (key == LogicalKeyboardKey.keyX || key == LogicalKeyboardKey.keyE) {
         return KeyEventResult.handled;
       }
     }
@@ -1103,12 +1122,15 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         _handlingTap ||
         _tutorialBlocking ||
         _albumOpen ||
-        _decorOpen ||
-        _shiftMode) {
+        _decorOpen) {
       return;
     }
     if (fromPointer && _cursor != null) {
       setState(() => _cursor = null);
+    }
+    if (_shiftMode) {
+      if (!forceAxe) await _pickShiftCamp(index);
+      return;
     }
     // Practice accepts only the highlighted plot, and no axe.
     if (_guidedPractice &&
@@ -1176,8 +1198,20 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _focusNode.requestFocus();
   }
 
+  /// Shift mode: a tap picks the camp to move, a second tap drops the pick.
+  Future<void> _pickShiftCamp(int index) async {
+    if (_controller.board[index] == null) {
+      await _feedback.warning();
+      return;
+    }
+    setState(() => _shiftFrom = _shiftFrom == index ? null : index);
+    await _feedback.tap();
+  }
+
   Future<void> _applyShift(ShiftDirection direction) async {
-    if (!_shiftMode ||
+    final from = _shiftFrom;
+    if (from == null ||
+        !_shiftMode ||
         _breakAdInProgress ||
         _handlingTap ||
         _tutorialBlocking ||
@@ -1187,7 +1221,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
     _handlingTap = true;
     try {
-      final result = _controller.useShift(direction);
+      final result = _controller.useShift(from, direction);
       switch (result.action) {
         case MergeAction.shifted:
           setState(() => _shiftMode = false);
@@ -1216,7 +1250,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   /// Effects, missions and discoveries of a Shift. The rules have already
-  /// been applied; the slide plays first, then each merged group.
+  /// been applied; the step plays first, then each merged group.
   void _afterShift() {
     final steps = _controller.lastMergeSteps;
     if (_effectsOn) {
@@ -1236,7 +1270,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           }
         }
       }
-      _fx.addShift(moves, merges: groups);
+      _fx.addShift(
+        moves,
+        merges: groups,
+        erasedTier: _controller.lastShiftErased,
+      );
     }
     if (_controller.lastMergeChain >= 2) {
       _chainLength = _controller.lastMergeChain;
@@ -1294,6 +1332,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                                 : null,
                             trailAxeMode: _trailAxeMode,
                             shiftMode: _shiftMode,
+                            shiftFrom: _shiftFrom,
                             onToggleShift: _toggleShift,
                             onShift: (direction) =>
                                 unawaited(_applyShift(direction)),
@@ -1445,7 +1484,7 @@ const List<HowToPlayStep> _howToPlaySteps = [
     icon: Icons.emoji_events_rounded,
     text:
         'Missions give a Trail Axe (X clears one tile) and camp XP. '
-        'Big merges earn a Shift (C slides every camp one way). '
+        'Big merges earn a Shift (C moves one camp a step). '
         'Level up to unlock new camp themes.',
   ),
 ];

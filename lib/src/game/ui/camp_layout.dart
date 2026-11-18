@@ -35,6 +35,7 @@ class CampHudLayout extends StatelessWidget {
     this.coachHint,
     required this.trailAxeMode,
     required this.shiftMode,
+    required this.shiftFrom,
     required this.soundMuted,
     required this.loopingArt,
     required this.shakeSerial,
@@ -75,6 +76,9 @@ class CampHudLayout extends StatelessWidget {
 
   /// Shift is armed: the board waits for a direction.
   final bool shiftMode;
+
+  /// Camp picked for the Shift; the direction bar shows once it is set.
+  final int? shiftFrom;
   final bool soundMuted;
   final bool loopingArt;
   final int shakeSerial;
@@ -168,55 +172,71 @@ class CampHudLayout extends StatelessWidget {
     );
   }
 
-  /// Direction pad over the bottom row while a Shift waits for its way.
-  Widget _shiftBar(CampPalette palette) {
+  /// Direction pad over the board while a picked camp waits for its way. One
+  /// short line on the far side so it never covers the picked camp's row or
+  /// the cell it would step onto.
+  Widget _shiftBar(CampPalette palette, int from) {
     Widget arrow(ShiftDirection direction, IconData icon, String label) {
       return IconButton.filledTonal(
         key: ValueKey('shift-${direction.name}'),
-        tooltip: 'Slide $label',
-        visualDensity: VisualDensity.compact,
-        onPressed: () => onShift(direction),
-        icon: Icon(icon),
+        tooltip: 'Step $label',
+        style: IconButton.styleFrom(
+          minimumSize: const Size(36, 32),
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: MergeCampController.shiftTarget(from, direction) == null
+            ? null
+            : () => onShift(direction),
+        icon: Icon(icon, size: 20),
       );
     }
 
+    final low = from ~/ MergeCampController.boardWidth >= 2;
     return Positioned(
       key: const ValueKey('shift-bar'),
       left: 4,
       right: 4,
-      bottom: 4,
+      top: low ? 4 : null,
+      bottom: low ? null : 4,
       child: Material(
         color: palette.panel,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            children: [
-              Text(
-                'Slide camps:',
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+        child: SizedBox(
+          height: 36,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                arrow(ShiftDirection.left, Icons.arrow_back_rounded, 'left'),
+                const SizedBox(width: 4),
+                arrow(ShiftDirection.up, Icons.arrow_upward_rounded, 'up'),
+                const SizedBox(width: 4),
+                arrow(
+                  ShiftDirection.down,
+                  Icons.arrow_downward_rounded,
+                  'down',
                 ),
-              ),
-              arrow(ShiftDirection.left, Icons.arrow_back_rounded, 'left'),
-              arrow(ShiftDirection.up, Icons.arrow_upward_rounded, 'up'),
-              arrow(ShiftDirection.down, Icons.arrow_downward_rounded, 'down'),
-              arrow(ShiftDirection.right, Icons.arrow_forward_rounded, 'right'),
-              TextButton(
-                key: const ValueKey('shift-cancel'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                const SizedBox(width: 4),
+                arrow(
+                  ShiftDirection.right,
+                  Icons.arrow_forward_rounded,
+                  'right',
                 ),
-                onPressed: onToggleShift,
-                child: const Text('Cancel'),
-              ),
-            ],
+                const SizedBox(width: 8),
+                TextButton(
+                  key: const ValueKey('shift-cancel'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                  ),
+                  onPressed: onToggleShift,
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -232,8 +252,9 @@ class CampHudLayout extends StatelessWidget {
       board: controller.board,
       theme: theme,
       fx: fx,
-      cursor: cursor,
+      cursor: shiftMode ? (shiftFrom ?? cursor) : cursor,
       axeMode: trailAxeMode,
+      shiftMode: shiftMode,
       animateArt: loopingArt,
       nextTier: controller.nextTier,
       previewPlacement: controller.previewPlacement,
@@ -243,8 +264,8 @@ class CampHudLayout extends StatelessWidget {
       shakeSerial: shakeSerial,
       onCellTap: onCellTap,
       overlays: [
-        if (shiftMode)
-          _shiftBar(palette)
+        if (shiftMode && shiftFrom != null)
+          _shiftBar(palette, shiftFrom!)
         else if (guidedIndex != null)
           _captionBar(
             palette,
@@ -262,7 +283,7 @@ class CampHudLayout extends StatelessWidget {
               onDone: onChainDone,
             ),
           ),
-        if (toastsOnBoard && !shiftMode)
+        if (toastsOnBoard && !(shiftMode && shiftFrom != null))
           Positioned(
             left: 8,
             right: 8,
@@ -305,7 +326,9 @@ class CampHudLayout extends StatelessWidget {
   String get _hint {
     if (trailAxeMode) return 'Tap a camp tile to clear it. Esc cancels.';
     if (shiftMode) {
-      return 'Pick a direction. Camps slide that way. Esc cancels.';
+      return shiftFrom == null
+          ? 'Tap the camp to move. Esc cancels.'
+          : 'Pick a direction. It steps one cell and clears what is there.';
     }
     if (cursor != null) {
       return 'Arrows/WASD move, Enter place, X axe, C shift, R restart.';

@@ -302,7 +302,7 @@ class TrailAxeButton extends StatelessWidget {
   }
 }
 
-/// Shift toggle: slides every camp one way. The compact form drops the label
+/// Shift toggle: steps one camp a cell. The compact form drops the label
 /// so it fits next to the Trail Axe in a narrow strip.
 class ShiftButton extends StatelessWidget {
   const ShiftButton({
@@ -339,7 +339,7 @@ class ShiftButton extends StatelessWidget {
     );
     return Tooltip(
       message:
-          'Shift slides every camp one way. '
+          'Shift moves one camp a step (a camp there is cleared). '
           'Earn it with a 5+ merge, a x3 chain or a Big merge mission.',
       child: Semantics(
         button: true,
@@ -374,7 +374,7 @@ class ShiftButton extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                selected ? 'Pick a way' : 'Shift',
+                                selected ? 'Pick a camp' : 'Shift',
                                 style: TextStyle(
                                   color: fg,
                                   fontSize: 15,

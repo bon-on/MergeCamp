@@ -4,12 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/game/ui/hud.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_progress_store.dart';
 import 'package:merge_camp/src/meta/missions.dart';
 import 'package:merge_camp/src/platform/game_platform.dart';
-
-const _empty = null;
 
 List<int?> _board(Map<int, int> tiles) =>
     List<int?>.generate(MergeCampController.cellCount, (index) => tiles[index]);
@@ -30,50 +29,72 @@ MergeCampController _loaded(
   return c;
 }
 
+bool _armed(WidgetTester tester) =>
+    tester.widget<ShiftButton>(find.byType(ShiftButton)).selected;
+
+Finder _cell(int index) => find
+    .descendant(
+      of: find.byType(GridView),
+      matching: find.byType(GestureDetector),
+    )
+    .at(index);
+
 void main() {
   group('Shift rules', () {
-    test('slides every camp to the wall and keeps their order', () {
-      final c = _loaded({1: 3, 3: 1, 6: 2, 12: 4, 15: 5});
-      final result = c.useShift(ShiftDirection.left);
-      expect(result.action, MergeAction.shifted);
-      expect(c.board, [
-        3, 1, _empty, _empty, //
-        2, _empty, _empty, _empty, //
-        _empty, _empty, _empty, _empty, //
-        4, 5, _empty, _empty, //
-      ]);
-      expect(c.shifts, 0);
-      expect(c.lastShiftMoves.map((m) => m.to), containsAll([0, 1, 4, 13]));
-      expect(c.lastMergeSteps, isEmpty);
-    });
-
-    test('slides in all four directions', () {
-      Map<int, int> start() => {5: 1, 10: 2};
+    test('steps one camp one cell in all four directions', () {
       final expected = {
-        ShiftDirection.left: {4: 1, 8: 2},
-        ShiftDirection.right: {7: 1, 11: 2},
-        ShiftDirection.up: {1: 1, 2: 2},
-        ShiftDirection.down: {13: 1, 14: 2},
+        ShiftDirection.left: 4,
+        ShiftDirection.right: 6,
+        ShiftDirection.up: 1,
+        ShiftDirection.down: 9,
       };
       for (final entry in expected.entries) {
-        final c = _loaded(start());
-        expect(c.useShift(entry.key).action, MergeAction.shifted);
-        expect(c.board, _board(entry.value), reason: entry.key.name);
+        final c = _loaded({5: 1, 10: 2});
+        expect(c.useShift(5, entry.key).action, MergeAction.shifted);
+        expect(
+          c.board,
+          _board({entry.value: 1, 10: 2}),
+          reason: entry.key.name,
+        );
+        expect(c.shifts, 0);
+        expect(c.lastShiftMoves.single.to, entry.value);
+        expect(c.lastShiftErased, isNull);
+        expect(c.lastMergeSteps, isEmpty);
       }
     });
 
-    test('does nothing and spends nothing when no camp can move', () {
-      final c = _loaded({0: 1, 4: 2, 8: 1});
+    test('shiftTarget stops at the walls', () {
+      expect(MergeCampController.shiftTarget(0, ShiftDirection.left), isNull);
+      expect(MergeCampController.shiftTarget(0, ShiftDirection.up), isNull);
+      expect(MergeCampController.shiftTarget(3, ShiftDirection.right), isNull);
+      expect(MergeCampController.shiftTarget(15, ShiftDirection.down), isNull);
+      expect(MergeCampController.shiftTarget(5, ShiftDirection.down), 9);
+    });
+
+    test('a camp on the target cell is cleared without points', () {
+      final c = _loaded({5: 1, 6: 2});
+      final scoreBefore = c.score;
+      expect(c.useShift(5, ShiftDirection.right).action, MergeAction.shifted);
+      expect(c.board, _board({6: 1}));
+      expect(c.lastShiftErased, 2);
+      expect(c.score, scoreBefore);
+      expect(c.mergeCount, 0);
+    });
+
+    test('a wall or an empty plot is blocked and spends nothing', () {
+      final c = _loaded({4: 1, 5: 2});
       final before = c.board;
-      final result = c.useShift(ShiftDirection.left);
-      expect(result.action, MergeAction.blocked);
+      expect(c.useShift(4, ShiftDirection.left).action, MergeAction.blocked);
+      expect(c.useShift(0, ShiftDirection.right).action, MergeAction.blocked);
+      expect(c.useShift(-1, ShiftDirection.right).action, MergeAction.blocked);
+      expect(c.useShift(99, ShiftDirection.right).action, MergeAction.blocked);
       expect(c.shifts, 1);
       expect(c.board, before);
     });
 
     test('cannot be used without a charge or after game over', () {
       final none = _loaded({5: 1}, shifts: 0);
-      expect(none.useShift(ShiftDirection.left).action, MergeAction.noTool);
+      expect(none.useShift(5, ShiftDirection.left).action, MergeAction.noTool);
       final over = MergeCampController();
       over.debugLoadBoard(
         _board({5: 1}),
@@ -82,65 +103,62 @@ void main() {
         shifts: 1,
         isGameOver: true,
       );
-      expect(over.useShift(ShiftDirection.left).action, MergeAction.gameOver);
+      expect(
+        over.useShift(5, ShiftDirection.left).action,
+        MergeAction.gameOver,
+      );
       expect(over.shifts, 1);
     });
 
-    test('a full board has nowhere to slide', () {
-      final c = _loaded({
-        for (var i = 0; i < MergeCampController.cellCount; i++)
-          i: (i ~/ 4 + i % 4).isEven ? 1 : 2,
-      });
-      expect(c.useShift(ShiftDirection.up).action, MergeAction.blocked);
-      expect(c.shifts, 1);
-    });
-
-    test('merges the touching groups it creates at the wall side', () {
-      final c = _loaded({0: 1, 2: 1, 3: 1});
-      final result = c.useShift(ShiftDirection.left);
+    test('merges from the target cell and empties the old one', () {
+      // 6 steps up next to 0 and 1 and joins them at cell 2.
+      final c = _loaded({0: 1, 1: 1, 6: 1});
+      final result = c.useShift(6, ShiftDirection.up);
       expect(result.action, MergeAction.shifted);
-      expect(c.board[0], 2, reason: 'origin is the cell nearest the wall');
-      expect(c.board.where((t) => t != null), hasLength(1));
-      expect(c.lastMergeSteps.single.origin, 0);
+      expect(c.board, _board({2: 2}));
+      expect(c.lastMergeSteps.single.origin, 2);
       expect(c.mergeCount, 1);
       expect(c.score, 3 * 12 * 2);
       expect(c.highestTier, 2);
       expect(c.bestMergeChain, 1);
-
-      final right = _loaded({0: 1, 1: 1, 3: 1});
-      right.useShift(ShiftDirection.right);
-      expect(right.board[3], 2);
-      expect(right.lastMergeSteps.single.origin, 3);
     });
 
-    test('merges at the wall-nearest cell across rows and columns', () {
-      // Left: the group {1, 4, 5} has its wall-nearest cell in column 0.
-      final left = _loaded({0: 2, 2: 1, 5: 1, 7: 1});
-      left.useShift(ShiftDirection.left);
-      expect(left.lastMergeSteps.single.origin, 4);
-      expect(left.board[4], 2);
-
-      // Down: the group {8, 9, 13} has its wall-nearest cell in the bottom row.
-      final down = _loaded({0: 1, 1: 1, 4: 2, 5: 1});
-      down.useShift(ShiftDirection.down);
-      expect(down.lastMergeSteps.single.origin, 13);
-      expect(down.board[13], 2);
+    test('clearing a camp can open the way for a merge', () {
+      final c = _loaded({0: 1, 1: 1, 2: 3, 6: 1});
+      c.useShift(6, ShiftDirection.up);
+      expect(c.lastShiftErased, 3);
+      expect(c.board, _board({2: 2}));
     });
 
     test('keeps merging a chain it starts', () {
-      // Left: row 0 slides into 1,1,1 -> tier 2 next to two tier 2 below.
-      final c = _loaded({0: 1, 2: 1, 3: 1, 4: 2, 8: 2});
-      c.useShift(ShiftDirection.left);
+      final c = _loaded({0: 1, 1: 1, 6: 1, 3: 2, 7: 2});
+      c.useShift(6, ShiftDirection.up);
       expect(c.lastMergeSteps.map((s) => s.toTier), [2, 3]);
-      expect(c.board[0], 3);
+      expect(c.board, _board({2: 3}));
       expect(c.lastMergeChain, 2);
       expect(c.highestTier, 3);
     });
 
+    test('the cleared camp is forgotten after the next action', () {
+      final c = _loaded({5: 1, 6: 2, 12: 3});
+      c.useShift(5, ShiftDirection.right);
+      expect(c.lastShiftErased, 2);
+      c.place(0);
+      expect(c.lastShiftErased, isNull);
+    });
+
+    test('a step that joins nothing merges nothing', () {
+      final c = _loaded({0: 1, 1: 1, 6: 2});
+      c.useShift(6, ShiftDirection.up);
+      expect(c.board, _board({0: 1, 1: 1, 2: 2}));
+      expect(c.lastMergeSteps, isEmpty);
+      expect(c.lastMergeChain, 0);
+    });
+
     test('does not count as a placement or draw a piece', () {
-      final c = _loaded({0: 1, 2: 1, 3: 1});
+      final c = _loaded({0: 1, 1: 1, 6: 1});
       final preview = c.previewTiers;
-      c.useShift(ShiftDirection.left);
+      c.useShift(6, ShiftDirection.up);
       expect(c.placements, 4);
       expect(c.previewTiers, preview);
       expect(c.lastPlacedIndex, isNull);
@@ -222,39 +240,219 @@ void main() {
       expect(find.text('x0'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('shift-button')));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(_armed(tester), isFalse);
     });
 
-    testWidgets('a direction slides the camps and spends the charge', (
+    testWidgets(
+      'pick a camp, then a direction, steps it and spends the charge',
+      (tester) async {
+        final c = _loaded({5: 1, 10: 2});
+        await _pump(tester, c);
+        await tester.tap(find.byKey(const ValueKey('shift-button')));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+        await tester.tap(_cell(5));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('shift-right')));
+        await tester.pump();
+        expect(c.board, _board({6: 1, 10: 2}));
+        expect(c.shifts, 0);
+        expect(c.placements, 4);
+        expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+        await tester.pumpAndSettle(const Duration(seconds: 2));
+      },
+    );
+
+    testWidgets('a merge started by a step plays out and settles', (
+      tester,
+    ) async {
+      final c = _loaded({0: 1, 1: 1, 6: 1});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(6));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('shift-up')));
+      await tester.pump();
+      expect(c.board, _board({2: 2}));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('clearing the target camp plays out and settles', (
+      tester,
+    ) async {
+      final c = _loaded({5: 1, 6: 2});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(5));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('shift-right')));
+      await tester.pump();
+      expect(c.board, _board({6: 1}));
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('empty plots are ignored and a second tap drops the pick', (
+      tester,
+    ) async {
+      final c = _loaded({5: 1});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(9));
+      await tester.pump();
+      expect(c.placements, 4);
+      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      await tester.tap(_cell(5));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      await tester.tap(_cell(5));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(c.shifts, 1);
+    });
+
+    testWidgets('a direction past the wall is disabled', (tester) async {
+      final c = _loaded({4: 1});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(4));
+      await tester.pump();
+      bool enabled(String name) =>
+          tester
+              .widget<IconButton>(find.byKey(ValueKey('shift-$name')))
+              .onPressed !=
+          null;
+      expect(enabled('left'), isFalse);
+      expect(enabled('right'), isTrue);
+      expect(enabled('up'), isTrue);
+      expect(enabled('down'), isTrue);
+    });
+
+    testWidgets('cancel closes the bar and keeps the charge', (tester) async {
+      final c = _loaded({5: 1});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(5));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('shift-cancel')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(_armed(tester), isFalse);
+      expect(c.shifts, 1);
+    });
+
+    testWidgets('Shift mode and Trail Axe mode exclude each other', (
+      tester,
+    ) async {
+      await _pump(tester, _loaded({5: 1}));
+      await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
+      await tester.pump();
+      expect(find.text('Pick a tile'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      expect(_armed(tester), isTrue);
+      expect(find.text('Pick a tile'), findsNothing);
+      await tester.tap(_cell(5));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.text('Pick a tile'), findsOneWidget);
+    });
+
+    testWidgets('the bar keeps off the picked camp row', (tester) async {
+      await _pump(tester, _loaded({1: 1, 13: 1}));
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      final board = tester.getRect(find.byType(GridView));
+      await tester.tap(_cell(1));
+      await tester.pump();
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('shift-bar'))).dy,
+        greaterThan(board.center.dy),
+      );
+      // The bar covers the bottom row, so drop the pick before choosing there.
+      await tester.tap(_cell(1));
+      await tester.pump();
+      await tester.tap(_cell(13));
+      await tester.pump();
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('shift-bar'))).dy,
+        lessThan(board.center.dy),
+      );
+    });
+
+    testWidgets('keyboard: C arms, Enter picks the cursor camp, arrow steps', (
       tester,
     ) async {
       final c = _loaded({5: 1, 10: 2});
       await _pump(tester, c);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.pump();
+      expect(_armed(tester), isTrue);
+      // The first arrow only shows the cursor; then it moves 0 -> 4 -> 5.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('keyboard-cursor')), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
       expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('shift-left')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
-      expect(c.board, _board({4: 1, 8: 2}));
+      expect(c.board, _board({9: 1, 10: 2}));
       expect(c.shifts, 0);
-      expect(c.placements, 4);
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
       await tester.pumpAndSettle(const Duration(seconds: 2));
     });
 
-    testWidgets('a merge started by a Shift plays out and settles', (
+    testWidgets('Esc drops the pick first, then leaves the mode', (
       tester,
     ) async {
-      final c = _loaded({0: 1, 2: 1, 3: 1});
+      final c = _loaded({0: 1, 5: 2});
       await _pump(tester, c);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-left')));
+      await tester.tap(_cell(5));
       await tester.pump();
-      expect(c.board[0], 2);
-      await tester.pump(const Duration(milliseconds: 200));
-      await tester.pumpAndSettle(const Duration(seconds: 3));
-      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(_armed(tester), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(_armed(tester), isFalse);
+      expect(c.shifts, 1);
+    });
+
+    testWidgets('arrows only move the cursor before a camp is picked', (
+      tester,
+    ) async {
+      final c = _loaded({5: 1});
+      await _pump(tester, c);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(c.board, _board({5: 1}));
+      expect(c.shifts, 1);
+    });
+
+    testWidgets('C does nothing without a charge', (tester) async {
+      await _pump(tester, _loaded({5: 1}, shifts: 0));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.pump();
+      expect(_armed(tester), isFalse);
     });
 
     testWidgets('Shift cannot be armed during the guided practice', (
@@ -307,92 +505,6 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
       expect(c.shifts, 1);
-    });
-
-    testWidgets('cancel closes the bar and keeps the charge', (tester) async {
-      final c = _loaded({5: 1});
-      await _pump(tester, c);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-cancel')));
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
-      expect(c.shifts, 1);
-    });
-
-    testWidgets('a direction with no movement keeps the mode open', (
-      tester,
-    ) async {
-      final c = _loaded({0: 1, 4: 2});
-      await _pump(tester, c);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-left')));
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-      expect(c.shifts, 1);
-      await tester.tap(find.byKey(const ValueKey('shift-right')));
-      await tester.pump();
-      expect(c.board, _board({3: 1, 7: 2}));
-      expect(c.shifts, 0);
-    });
-
-    testWidgets('Shift mode and Trail Axe mode exclude each other', (
-      tester,
-    ) async {
-      await _pump(tester, _loaded({5: 1}));
-      await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
-      await tester.pump();
-      expect(find.text('Pick a tile'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-      expect(find.text('Pick a tile'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
-      expect(find.text('Pick a tile'), findsOneWidget);
-    });
-
-    testWidgets('tapping a plot while Shift is armed places nothing', (
-      tester,
-    ) async {
-      final c = _loaded({5: 1});
-      await _pump(tester, c);
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
-      await tester.pump();
-      await tester.tapAt(tester.getCenter(find.byType(GridView)));
-      await tester.pump();
-      expect(c.placements, 4);
-    });
-
-    testWidgets('C arms Shift, arrows pick the way, Esc cancels', (
-      tester,
-    ) async {
-      final c = _loaded({5: 1, 10: 2});
-      await _pump(tester, c);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
-      expect(c.shifts, 1);
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-      expect(c.board, _board({13: 1, 14: 2}));
-      expect(c.shifts, 0);
-      await tester.pumpAndSettle(const Duration(seconds: 2));
-    });
-
-    testWidgets('C does nothing without a charge', (tester) async {
-      await _pump(tester, _loaded({5: 1}, shifts: 0));
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
-      await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
     });
 
     testWidgets('a Big merge mission pays a Shift instead of a Trail Axe', (
@@ -454,11 +566,26 @@ void main() {
       Size(1280, 720),
     ]) {
       testWidgets('the Shift bar fits $size', (tester) async {
-        await _pump(tester, _loaded({5: 1}), size: size);
+        await _pump(tester, _loaded({5: 1, 13: 1}), size: size);
         await tester.tap(find.byKey(const ValueKey('shift-button')));
         await tester.pump();
-        expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-        expect(tester.takeException(), isNull);
+        // Picked camp and the cell below/above it stay uncovered.
+        for (final cell in [5, 13]) {
+          await tester.tap(_cell(cell));
+          await tester.pump();
+          final bar = tester.getRect(find.byKey(const ValueKey('shift-bar')));
+          final near = cell == 13 ? [13, 9] : [5, 9];
+          for (final index in near) {
+            expect(
+              bar.overlaps(tester.getRect(_cell(index))),
+              isFalse,
+              reason: 'bar covers cell $index at $size',
+            );
+          }
+          expect(tester.takeException(), isNull);
+          await tester.tap(_cell(cell));
+          await tester.pump();
+        }
       });
     }
   });

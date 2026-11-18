@@ -24,6 +24,7 @@ class BoardView extends StatefulWidget {
     this.guidedIndex,
     this.previewPlacement,
     this.axeMode = false,
+    this.shiftMode = false,
     this.animateArt = true,
     this.danger = false,
     this.pulseDanger = true,
@@ -42,6 +43,9 @@ class BoardView extends StatefulWidget {
   final int? guidedIndex;
   final List<MergeStep> Function(int)? previewPlacement;
   final bool axeMode;
+
+  /// Shift picking: no placement preview, the cursor marks the picked camp.
+  final bool shiftMode;
   final bool animateArt;
 
   /// 13+ occupied cells: glowing red edge.
@@ -76,7 +80,7 @@ class _BoardViewState extends State<BoardView> {
     final overlays = widget.overlays;
     final onCellTap = widget.onCellTap;
     final target = widget.guidedIndex ?? _hovered ?? cursor;
-    final steps = target == null || axeMode
+    final steps = target == null || axeMode || widget.shiftMode
         ? const <MergeStep>[]
         : widget.previewPlacement?.call(target) ?? const <MergeStep>[];
     final merging = {for (final step in steps) ...step.absorbed};
@@ -145,7 +149,8 @@ class _BoardViewState extends State<BoardView> {
                     axeMode: axeMode,
                     animate: animateArt,
                     nextTier: index == target ? resultTier : nextTier,
-                    previewOrigin: index == target && !axeMode,
+                    previewOrigin:
+                        index == target && !axeMode && !widget.shiftMode,
                     previewMerge: merging.contains(index),
                     guided: widget.guidedIndex == index,
                     previewChain: index == target ? steps.length : 0,

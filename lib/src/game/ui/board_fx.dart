@@ -107,16 +107,20 @@ class _PlaceEvent extends _FxEvent {
 }
 
 class _RemoveEvent extends _FxEvent {
-  _RemoveEvent(this.index, this.tier);
+  _RemoveEvent(this.index, this.tier, {this.cut});
 
   final int index;
   final int tier;
 
+  /// Ends the event early (a camp cleared under an arriving one).
+  final Duration? cut;
+
   @override
-  Duration get length => FxTiming.removal + const Duration(milliseconds: 200);
+  Duration get length =>
+      cut ?? FxTiming.removal + const Duration(milliseconds: 200);
 }
 
-/// One camp gliding from [from] to [to] after a Shift. A camp that does not
+/// A camp gliding from [from] to [to] after a Shift. A camp that does not
 /// move ([from] == [to]) is held in place so a merge that follows can start
 /// from its old tier.
 class _ShiftEvent extends _FxEvent {
@@ -164,15 +168,22 @@ class BoardFx extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Camps slid after a Shift; they glide to their new cells.
-  /// [merges] are the groups it then merges, one list of steps per group;
-  /// they play after the slide.
+  /// A Shift moved a camp; it glides to its new cell. [erased] is the camp
+  /// that stood there, cleared on arrival. [merges] are the groups it then
+  /// merges, one list of steps per group; they play after the slide.
   void addShift(
     List<ShiftMove> moves, {
     List<List<MergeStep>> merges = const <List<MergeStep>>[],
+    int? erasedTier,
   }) {
     if (moves.isEmpty) return;
     _cancelCovers();
+    // Queued first so the gliding camp paints over the clearing one.
+    if (erasedTier != null) {
+      _events.add(
+        _RemoveEvent(moves.first.to, erasedTier, cut: FxTiming.slide),
+      );
+    }
     for (final move in moves) {
       _events.add(_ShiftEvent(move.from, move.to, move.tier));
     }
