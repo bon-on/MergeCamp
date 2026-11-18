@@ -302,8 +302,9 @@ class TrailAxeButton extends StatelessWidget {
   }
 }
 
-/// Shift toggle: steps one camp a cell. The compact form drops the label
-/// so it fits next to the Trail Axe in a narrow strip.
+/// Shift toggle: steps one camp a cell. The compact form drops the charge
+/// pips and keeps a fixed label so it fits next to the Trail Axe in a narrow
+/// strip without rescaling when armed.
 class ShiftButton extends StatelessWidget {
   const ShiftButton({
     super.key,
@@ -327,20 +328,10 @@ class ShiftButton extends StatelessWidget {
         ? palette.accent
         : palette.textSecondary.withValues(alpha: enabled ? 0.14 : 0.07);
     final fg = selected ? palette.onAccent : palette.textPrimary;
-    final icon = Icon(
-      Icons.open_with_rounded,
-      color: fg,
-      size: compact ? 24 : 28,
-    );
-    final count = Text(
-      'x$charges',
-      key: const ValueKey('shift-count'),
-      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w800),
-    );
     return Tooltip(
       message:
           'Shift moves one camp a step (a camp there is cleared). '
-          'Earn it with a 5+ merge, a x3 chain or a Big merge mission.',
+          'Earn it with a 4+ merge, a x3 chain or your first tier 6 camp.',
       child: Semantics(
         button: true,
         toggled: selected,
@@ -354,39 +345,69 @@ class ShiftButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: compact ? 10 : 14,
+                horizontal: compact ? 4 : 14,
                 vertical: compact ? 8 : 12,
               ),
               child: Opacity(
                 opacity: enabled || selected ? 1 : 0.55,
-                child: compact
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [icon, count],
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          icon,
-                          const SizedBox(width: 8),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                selected ? 'Pick a camp' : 'Shift',
-                                style: TextStyle(
-                                  color: fg,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.open_with_rounded,
+                      color: fg,
+                      size: compact ? 20 : 28,
+                    ),
+                    SizedBox(width: compact ? 4 : 8),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selected && !compact ? 'Pick a camp' : 'Shift',
+                          style: TextStyle(
+                            color: fg,
+                            fontSize: compact ? 12 : 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (
+                              var i = 0;
+                              !compact && i < MergeCampController.maxShifts;
+                              i++
+                            )
+                              Container(
+                                margin: const EdgeInsets.only(right: 4),
+                                width: 14,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(3),
+                                  color: i < charges
+                                      ? (selected
+                                            ? palette.onAccent
+                                            : palette.accent)
+                                      : fg.withValues(alpha: 0.2),
                                 ),
                               ),
-                              const SizedBox(height: 3),
-                              count,
-                            ],
-                          ),
-                        ],
-                      ),
+                            Text(
+                              'x$charges',
+                              key: const ValueKey('shift-count'),
+                              style: TextStyle(
+                                color: fg,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

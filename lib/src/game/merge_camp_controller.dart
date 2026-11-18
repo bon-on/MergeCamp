@@ -71,7 +71,10 @@ class MergeCampController extends ChangeNotifier {
   static const int maxShifts = 1;
 
   /// A single placement merging this many tiles at once earns a Shift.
-  static const int bigShiftCluster = 5;
+  static const int bigShiftCluster = 4;
+
+  /// The first camp of this tier built in a run earns a Shift.
+  static const int shiftTier = 6;
 
   /// A single placement chaining this many merges earns a Shift.
   static const int chainForShift = 3;
@@ -363,6 +366,7 @@ class MergeCampController extends ChangeNotifier {
     final placedTier = _previewTiers.removeAt(0);
     _board[index] = placedTier;
     _placements += 1;
+    final tierBefore = _highestTier;
     _highestTier = max(_highestTier, placedTier);
     final steps = _resolveMergeSteps(_board, index);
     for (final step in steps) {
@@ -376,7 +380,8 @@ class MergeCampController extends ChangeNotifier {
     _bestMergeChain = max(_bestMergeChain, mergeCount);
     _awardTrailAxeIfReady();
     if (steps.length >= chainForShift ||
-        steps.any((step) => step.absorbed.length + 1 >= bigShiftCluster)) {
+        steps.any((step) => step.absorbed.length + 1 >= bigShiftCluster) ||
+        _firstShiftTier(tierBefore)) {
       _lastEarnedShift = grantShift(notify: false);
     }
     _previewTiers.add(_rollNextTier());
@@ -402,6 +407,10 @@ class MergeCampController extends ChangeNotifier {
     notifyListeners();
     return true;
   }
+
+  /// Whether this action built the run's first camp of [shiftTier] or higher.
+  bool _firstShiftTier(int before) =>
+      before < shiftTier && _highestTier >= shiftTier;
 
   /// Grants one Shift (big merge or mission reward). Returns false at the cap
   /// or after game over.
@@ -456,9 +465,14 @@ class MergeCampController extends ChangeNotifier {
     if (_connectedCluster(_board, to, tier).length >= 3) {
       steps = _resolveMergeSteps(_board, to);
     }
+    final tierBefore = _highestTier;
     for (final step in steps) {
       _score += step.points;
       _highestTier = max(_highestTier, step.toTier);
+    }
+    // The spent charge is free again, so a first tier 6 camp refills it.
+    if (_firstShiftTier(tierBefore)) {
+      _lastEarnedShift = grantShift(notify: false);
     }
     _lastMergeSteps = List.unmodifiable(steps);
     _mergeCount += steps.length;

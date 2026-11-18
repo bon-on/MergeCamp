@@ -18,6 +18,7 @@ MergeCampController _loaded(
   int shifts = 1,
   int placements = 4,
   int nextTier = 1,
+  int highestTier = 1,
 }) {
   final c = MergeCampController();
   c.debugLoadBoard(
@@ -25,6 +26,7 @@ MergeCampController _loaded(
     nextTier: nextTier,
     placements: placements,
     shifts: shifts,
+    highestTier: highestTier,
   );
   return c;
 }
@@ -170,6 +172,70 @@ void main() {
       final result = c.place(2);
       expect(result.action, MergeAction.merged);
       expect(c.lastMergeSteps.first.absorbed.length + 1, 5);
+      expect(c.shifts, 1);
+      expect(c.lastEarnedShift, isTrue);
+    });
+
+    test('a 4-tile merge earns a Shift, a 3-tile one does not', () {
+      // Placing at 1 joins 0, 2 and 5 into a group of four.
+      final four = _loaded({0: 1, 2: 1, 5: 1}, shifts: 0);
+      four.place(1);
+      expect(four.lastMergeSteps.first.absorbed.length + 1, 4);
+      expect(four.shifts, 1);
+      final three = _loaded({0: 1, 2: 1}, shifts: 0);
+      three.place(1);
+      expect(three.shifts, 0);
+    });
+
+    test('the first tier 6 camp of a run earns a Shift, once', () {
+      final first = _loaded({0: 5, 1: 5}, shifts: 0, nextTier: 5);
+      first.place(2);
+      expect(first.highestTier, 6);
+      expect(first.shifts, 1);
+      expect(first.lastEarnedShift, isTrue);
+
+      // A tier 6 camp already stands: another one earns nothing.
+      final again = _loaded(
+        {0: 5, 1: 5, 15: 6},
+        shifts: 0,
+        nextTier: 5,
+        highestTier: 6,
+      );
+      again.place(2);
+      expect(again.shifts, 0);
+    });
+
+    test('the first tier 6 with a full charge keeps one and is spent', () {
+      final c = _loaded({0: 5, 1: 5}, shifts: 1, nextTier: 5);
+      c.place(2);
+      expect(c.shifts, 1);
+      expect(c.lastEarnedShift, isFalse);
+      // The chance is gone for the run: highestTier already moved on.
+      expect(c.highestTier, 6);
+    });
+
+    test('the tier 6 reward is not earned again after a snapshot reload', () {
+      final c = _loaded({0: 5, 1: 5}, shifts: 0, nextTier: 5);
+      c.place(2);
+      expect(c.shifts, 1);
+      final copy = MergeCampController();
+      expect(copy.restoreSnapshot(c.toSnapshot()), isTrue);
+      copy.useShift(2, ShiftDirection.down);
+      expect(copy.shifts, 0);
+      copy.debugLoadBoard(
+        _board({0: 5, 1: 5, 15: 6}),
+        nextTier: 5,
+        placements: 5,
+        highestTier: 6,
+      );
+      copy.place(2);
+      expect(copy.shifts, 0);
+    });
+
+    test('a Shift merge that builds the first tier 6 refills the charge', () {
+      final c = _loaded({0: 5, 1: 5, 6: 5});
+      c.useShift(6, ShiftDirection.up);
+      expect(c.highestTier, 6);
       expect(c.shifts, 1);
       expect(c.lastEarnedShift, isTrue);
     });
@@ -545,6 +611,22 @@ void main() {
       expect(c.shifts, 1);
       expect(c.trailAxes, axesBefore);
       expect(find.textContaining('+1 Shift'), findsOneWidget);
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+    });
+
+    testWidgets('a Shift merge that builds the first tier 6 shows a toast', (
+      tester,
+    ) async {
+      final c = _loaded({0: 5, 1: 5, 6: 5});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(6));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('shift-up')));
+      await tester.pump();
+      expect(c.shifts, 1);
+      expect(find.textContaining('Shift earned'), findsOneWidget);
       await tester.pumpAndSettle(const Duration(seconds: 4));
     });
 

@@ -271,31 +271,31 @@ void main() {
     expect(find.byKey(const ValueKey('fx-origin')), findsNothing);
   });
 
-  testWidgets('missions: three are shown; the big merge one grants a Shift', (
-    tester,
-  ) async {
-    final h = await _pump(tester);
-    expect(find.byKey(const ValueKey('mission-row')), findsNWidgets(3));
-    expect(find.text('Merge 4+ tiles at once'), findsOneWidget);
+  testWidgets(
+    'missions: three are shown; a 4-tile merge earns a Shift and pays a Trail Axe',
+    (tester) async {
+      final h = await _pump(tester);
+      expect(find.byKey(const ValueKey('mission-row')), findsNWidgets(3));
+      expect(find.text('Merge 4+ tiles at once'), findsOneWidget);
 
-    final board = List<int?>.filled(16, null);
-    board[1] = 1;
-    board[2] = 1;
-    board[3] = 1;
-    h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 1);
-    await tester.tap(_cell(0));
-    await tester.pump();
+      final board = List<int?>.filled(16, null);
+      board[1] = 1;
+      board[2] = 1;
+      board[3] = 1;
+      h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 1);
+      await tester.tap(_cell(0));
+      await tester.pump();
 
-    expect(h.missions.completedThisRun, 1);
-    expect(h.controller.shifts, 1);
-    expect(h.controller.trailAxes, 1);
-    expect(
-      find.text('Mission complete: Merge 4+ tiles at once (+1 Shift)'),
-      findsOneWidget,
-    );
-    await tester.pump(const Duration(seconds: 3));
-    expect(find.textContaining('Mission complete'), findsNothing);
-  });
+      expect(h.missions.completedThisRun, 1);
+      // The merge itself earned the Shift, so the mission pays the next tool.
+      expect(h.controller.shifts, 1);
+      expect(h.controller.trailAxes, 2);
+      // Only the latest two toasts stay, so the mission one may already be
+      // gone behind the first-merge and Shift ones.
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.textContaining('Mission complete'), findsNothing);
+    },
+  );
 
   testWidgets('a mission with Shift and Trail Axe at their caps pays score', (
     tester,

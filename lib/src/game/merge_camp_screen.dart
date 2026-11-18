@@ -1280,7 +1280,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _chainLength = _controller.lastMergeChain;
       _chainSerial += 1;
     }
-    _settleMissions();
+    final missionsDone = _settleMissions();
+    if (_controller.lastEarnedShift) {
+      _toast('Shift earned! Move one camp a step.', Icons.open_with_rounded);
+      if (missionsDone.isEmpty) unawaited(_feedback.mission());
+    }
     _discoverTiers({
       for (final step in steps) step.toTier.clamp(1, CampTileArt.maxArtTier),
     });
