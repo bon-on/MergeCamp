@@ -256,7 +256,13 @@ void main() {
     await tester.pump();
     await _finishRun(tester, h.controller);
     expect(find.textContaining('Tomorrow: streak 1, +40 XP'), findsOneWidget);
-    expect(find.textContaining("Today's best 120"), findsOneWidget);
+    // Missions are random: one may complete on the last move and add its
+    // bonus, so compare with the run's final score instead of a constant.
+    expect(h.controller.score, lessThan(900));
+    expect(
+      find.textContaining("Today's best ${h.controller.score}"),
+      findsOneWidget,
+    );
     expect(find.textContaining("Today's best 900"), findsNothing);
   });
 
