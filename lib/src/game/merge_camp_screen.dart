@@ -87,6 +87,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   late final AppLifecycleListener _lifecycle;
   final BoardFx _fx = BoardFx();
   bool _trailAxeMode = false;
+  bool _shiftMode = false;
   // Keyboard cursor; null until the player uses the keyboard.
   int? _cursor;
   // Game keys bubble up to this node from any focused child, so it never
@@ -360,6 +361,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (_controller.placements != 0 || _controller.isGameOver) return;
     _guidedPractice = true;
     _trailAxeMode = false;
+    _shiftMode = false;
     _cursor = _guidedPlot;
     // Notifies _onChanged, which saves the practice board and rebuilds.
     _controller.startGuidedRun();
@@ -463,6 +465,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     setState(() {
       _albumOpen = true;
       _trailAxeMode = false;
+      _shiftMode = false;
     });
     _syncGameplay();
   }
@@ -479,6 +482,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     setState(() {
       _decorOpen = true;
       _trailAxeMode = false;
+      _shiftMode = false;
     });
     _syncGameplay();
   }
@@ -569,6 +573,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _wasGameOver = _controller.isGameOver;
       if (runEnded) {
         _trailAxeMode = false;
+        _shiftMode = false;
         _report = RunReport(
           score: _controller.score,
           highestTier: _controller.highestTier,
@@ -609,10 +614,30 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _chainSerial += 1;
     }
 
-    final missionsDone = _missions.update(_controller);
-    for (final mission in missionsDone) {
-      final axe = _controller.grantTrailAxe();
-      if (!axe) {
+    final missionsDone = _settleMissions();
+    if (_controller.lastEarnedShift) {
+      _toast(
+        'Shift earned! Slide every camp one way.',
+        Icons.open_with_rounded,
+      );
+      if (missionsDone.isEmpty) unawaited(_feedback.mission());
+    }
+    _discoverTiers({
+      placedTier.clamp(1, CampTileArt.maxArtTier),
+      for (final step in steps) step.toTier.clamp(1, CampTileArt.maxArtTier),
+    });
+    _firstMinuteRewards(steps, quiet: missionsDone.isNotEmpty);
+  }
+
+  /// Mission rewards: a Shift for the "merge N at once" goal, otherwise a
+  /// Trail Axe, and bonus points when the tool is already at its cap.
+  List<Mission> _settleMissions() {
+    final done = _missions.update(_controller);
+    for (final mission in done) {
+      final shift =
+          mission.kind == MissionKind.bigMerge && _controller.grantShift();
+      final axe = !shift && _controller.grantTrailAxe();
+      if (!shift && !axe) {
         if (_controller.isGameOver) {
           _controller.addFinalMissionBonus(_missionBonusScore);
         } else {
@@ -622,18 +647,22 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       unawaited(_feedback.mission());
       _toast(
         'Mission complete: ${mission.label} '
-        '(${axe ? '+1 Trail Axe' : '+$_missionBonusScore'})',
+        '(${shift
+            ? '+1 Shift'
+            : axe
+            ? '+1 Trail Axe'
+            : '+$_missionBonusScore'})',
         Icons.emoji_events_rounded,
       );
     }
+    return done;
+  }
 
+  /// Marks camp tiers the player created for the first time in the album.
+  void _discoverTiers(Set<int> tiers) {
     var next = _progress;
     var newest = 0;
-    final created = <int>{
-      placedTier.clamp(1, CampTileArt.maxArtTier),
-      for (final step in steps) step.toTier.clamp(1, CampTileArt.maxArtTier),
-    }.toList()..sort();
-    for (final tier in created) {
+    for (final tier in tiers.toList()..sort()) {
       if (!next.discoveredTiers.contains(tier)) {
         next = next.withDiscovered(tier);
         newest = tier;
@@ -645,7 +674,6 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _discoveryTier = newest;
       _discoverySerial += 1;
     }
-    _firstMinuteRewards(steps, quiet: missionsDone.isNotEmpty);
   }
 
   /// Brand-new players only (feature-first-minute-rewards): the welcome
@@ -884,6 +912,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       }
     }
     _trailAxeMode = false;
+    _shiftMode = false;
     _guidedPractice = false;
     _coachActive = false;
     _report = null;
@@ -980,6 +1009,21 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       unawaited(_restartRun());
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.keyC) {
+      if (!isRepeat) _toggleShift();
+      return KeyEventResult.handled;
+    }
+    if (_shiftMode) {
+      final direction = _shiftDirectionOf(key);
+      if (direction != null) {
+        if (!isRepeat) unawaited(_applyShift(direction));
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.escape) {
+        if (!isRepeat) setState(() => _shiftMode = false);
+        return KeyEventResult.handled;
+      }
+    }
     final size = _controller.board.length;
     final current = _cursor ?? 0;
     int? next;
@@ -1033,6 +1077,23 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     return KeyEventResult.ignored;
   }
 
+  static ShiftDirection? _shiftDirectionOf(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+      return ShiftDirection.up;
+    }
+    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
+      return ShiftDirection.down;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      return ShiftDirection.left;
+    }
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.keyD) {
+      return ShiftDirection.right;
+    }
+    return null;
+  }
+
   Future<void> _handleCellTap(
     int index, {
     bool forceAxe = false,
@@ -1042,7 +1103,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         _handlingTap ||
         _tutorialBlocking ||
         _albumOpen ||
-        _decorOpen) {
+        _decorOpen ||
+        _shiftMode) {
       return;
     }
     if (fromPointer && _cursor != null) {
@@ -1070,6 +1132,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         }
         setState(() {
           _trailAxeMode = false;
+          _shiftMode = false;
           _celebrate(_Milestone.axe);
         });
       }
@@ -1080,6 +1143,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
           final chain = _controller.lastMergeChain;
           await (chain >= 2 ? _feedback.chain(chain) : _feedback.merge());
         case MergeAction.removed:
+        case MergeAction.shifted:
           await _feedback.tap();
         case MergeAction.blocked:
         case MergeAction.noTool:
@@ -1093,8 +1157,98 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
 
   void _toggleTrailAxe() {
     if (_guidedPractice) return;
-    setState(() => _trailAxeMode = !_trailAxeMode);
+    setState(() {
+      _trailAxeMode = !_trailAxeMode;
+      _shiftMode = false;
+    });
     _focusNode.requestFocus();
+  }
+
+  void _toggleShift() {
+    if (_guidedPractice || _tutorialBlocking || _albumOpen || _decorOpen) {
+      return;
+    }
+    if (!_shiftMode && !_controller.canUseShift) return;
+    setState(() {
+      _shiftMode = !_shiftMode;
+      _trailAxeMode = false;
+    });
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _applyShift(ShiftDirection direction) async {
+    if (!_shiftMode ||
+        _breakAdInProgress ||
+        _handlingTap ||
+        _tutorialBlocking ||
+        _albumOpen ||
+        _decorOpen) {
+      return;
+    }
+    _handlingTap = true;
+    try {
+      final result = _controller.useShift(direction);
+      switch (result.action) {
+        case MergeAction.shifted:
+          setState(() => _shiftMode = false);
+          _afterShift();
+          final chain = _controller.lastMergeChain;
+          if (_controller.lastMergeSteps.isEmpty) {
+            await _feedback.tap();
+          } else {
+            await (chain >= 2 ? _feedback.chain(chain) : _feedback.merge());
+          }
+        case MergeAction.blocked:
+          // Nothing could move that way: keep the mode so another direction
+          // can be picked.
+          await _feedback.warning();
+        case MergeAction.placed:
+        case MergeAction.merged:
+        case MergeAction.removed:
+        case MergeAction.noTool:
+        case MergeAction.gameOver:
+          if (mounted) setState(() => _shiftMode = false);
+          await _feedback.warning();
+      }
+    } finally {
+      _handlingTap = false;
+    }
+  }
+
+  /// Effects, missions and discoveries of a Shift. The rules have already
+  /// been applied; the slide plays first, then each merged group.
+  void _afterShift() {
+    final steps = _controller.lastMergeSteps;
+    if (_effectsOn) {
+      final groups = <List<MergeStep>>[];
+      for (final step in steps) {
+        if (step.chainIndex == 1) groups.add(<MergeStep>[]);
+        groups.last.add(step);
+      }
+      // Merged cells that did not move already show their final state; hold
+      // their old tiers until the merge effects take over after the slide.
+      final moves = List<ShiftMove>.of(_controller.lastShiftMoves);
+      final taken = {for (final move in moves) move.to};
+      for (final step in steps) {
+        for (final cell in [step.origin, ...step.absorbed]) {
+          if (taken.add(cell)) {
+            moves.add(ShiftMove(from: cell, to: cell, tier: step.fromTier));
+          }
+        }
+      }
+      _fx.addShift(moves, merges: groups);
+    }
+    if (_controller.lastMergeChain >= 2) {
+      _chainLength = _controller.lastMergeChain;
+      _chainSerial += 1;
+    }
+    _settleMissions();
+    _discoverTiers({
+      for (final step in steps) step.toTier.clamp(1, CampTileArt.maxArtTier),
+    });
+    // The checkpoint taken when the board changed predates mission progress.
+    if (!_controller.isGameOver) _checkpointRun();
+    setState(() {});
   }
 
   @override
@@ -1139,6 +1293,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                                 ? 'Nice! Keep placing tiles - 3 touching matches merge.'
                                 : null,
                             trailAxeMode: _trailAxeMode,
+                            shiftMode: _shiftMode,
+                            onToggleShift: _toggleShift,
+                            onShift: (direction) =>
+                                unawaited(_applyShift(direction)),
                             soundMuted: _soundMuted,
                             loopingArt: loopingArt,
                             shakeSerial: _shakeSerial,
@@ -1287,6 +1445,7 @@ const List<HowToPlayStep> _howToPlaySteps = [
     icon: Icons.emoji_events_rounded,
     text:
         'Missions give a Trail Axe (X clears one tile) and camp XP. '
+        'Big merges earn a Shift (C slides every camp one way). '
         'Level up to unlock new camp themes.',
   ),
 ];

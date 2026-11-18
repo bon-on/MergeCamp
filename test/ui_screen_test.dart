@@ -271,7 +271,7 @@ void main() {
     expect(find.byKey(const ValueKey('fx-origin')), findsNothing);
   });
 
-  testWidgets('missions: three are shown; completing one grants an axe', (
+  testWidgets('missions: three are shown; the big merge one grants a Shift', (
     tester,
   ) async {
     final h = await _pump(tester);
@@ -287,16 +287,17 @@ void main() {
     await tester.pump();
 
     expect(h.missions.completedThisRun, 1);
-    expect(h.controller.trailAxes, 2);
+    expect(h.controller.shifts, 1);
+    expect(h.controller.trailAxes, 1);
     expect(
-      find.text('Mission complete: Merge 4+ tiles at once (+1 Trail Axe)'),
+      find.text('Mission complete: Merge 4+ tiles at once (+1 Shift)'),
       findsOneWidget,
     );
     await tester.pump(const Duration(seconds: 3));
     expect(find.textContaining('Mission complete'), findsNothing);
   });
 
-  testWidgets('a mission at the axe cap pays bonus score instead', (
+  testWidgets('a mission with Shift and Trail Axe at their caps pays score', (
     tester,
   ) async {
     final h = await _pump(tester);
@@ -304,12 +305,13 @@ void main() {
     board[1] = 1;
     board[2] = 1;
     board[3] = 1;
-    h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 2);
+    h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 2, shifts: 1);
     await tester.tap(_cell(0));
     await tester.pump();
     // 4 tiles * 12 * tier 2 = 96 points, plus the 150 mission bonus.
     expect(h.controller.score, 96 + 150);
     expect(h.controller.trailAxes, 2);
+    expect(h.controller.shifts, 1);
     expect(find.textContaining('(+150)'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });

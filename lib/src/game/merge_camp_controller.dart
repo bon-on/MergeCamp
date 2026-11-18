@@ -4,7 +4,19 @@ import 'package:flutter/foundation.dart';
 
 import '../meta/daily_camp.dart';
 
-enum MergeAction { placed, merged, removed, blocked, noTool, gameOver }
+enum MergeAction { placed, merged, removed, shifted, blocked, noTool, gameOver }
+
+/// Direction every camp slides in when a Shift is used.
+enum ShiftDirection { up, down, left, right }
+
+/// One camp that slid during a Shift, for presentation.
+class ShiftMove {
+  const ShiftMove({required this.from, required this.to, required this.tier});
+
+  final int from;
+  final int to;
+  final int tier;
+}
 
 class MergeResult {
   const MergeResult(this.action);
@@ -55,6 +67,15 @@ class MergeCampController extends ChangeNotifier {
   static const int previewCount = 3;
   static const int maxTrailAxes = 2;
 
+  /// Shift (slide every camp one way) holds one charge at most.
+  static const int maxShifts = 1;
+
+  /// A single placement merging this many tiles at once earns a Shift.
+  static const int bigShiftCluster = 5;
+
+  /// A single placement chaining this many merges earns a Shift.
+  static const int chainForShift = 3;
+
   /// Highest camp tier with its own name and illustration.
   static const int maxCampTier = 8;
 
@@ -79,6 +100,9 @@ class MergeCampController extends ChangeNotifier {
   int _placements = 0;
   int _trailAxes = 1;
   int _lastAwardedAxeAt = 0;
+  int _shifts = 0;
+  bool _lastEarnedShift = false;
+  List<ShiftMove> _lastShiftMoves = const <ShiftMove>[];
   int _lastMergeChain = 0;
   int _bestMergeChain = 0;
   bool _isGameOver = false;
@@ -103,6 +127,14 @@ class MergeCampController extends ChangeNotifier {
   int get highestTier => _highestTier;
   int get placements => _placements;
   int get trailAxes => _trailAxes;
+  int get shifts => _shifts;
+  bool get canUseShift => _shifts > 0 && !_isGameOver;
+
+  /// Whether the most recent [place] earned a Shift by itself.
+  bool get lastEarnedShift => _lastEarnedShift;
+
+  /// Camps that slid in the most recent [useShift]; empty otherwise.
+  List<ShiftMove> get lastShiftMoves => _lastShiftMoves;
   int get lastMergeChain => _lastMergeChain;
   int get bestMergeChain => _bestMergeChain;
   bool get isGameOver => _isGameOver;
@@ -151,6 +183,9 @@ class MergeCampController extends ChangeNotifier {
     _placements = 0;
     _trailAxes = 1;
     _lastAwardedAxeAt = 0;
+    _shifts = 0;
+    _lastEarnedShift = false;
+    _lastShiftMoves = const <ShiftMove>[];
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = false;
@@ -194,6 +229,7 @@ class MergeCampController extends ChangeNotifier {
     'placements': _placements,
     'trailAxes': _trailAxes,
     'lastAwardedAxeAt': _lastAwardedAxeAt,
+    'shifts': _shifts,
     'lastMergeChain': _lastMergeChain,
     'bestMergeChain': _bestMergeChain,
     'mergeCount': _mergeCount,
@@ -219,6 +255,7 @@ class MergeCampController extends ChangeNotifier {
         !integer(data['placements'], 0, 1000000) ||
         !integer(data['trailAxes'], 0, maxTrailAxes) ||
         !integer(data['lastAwardedAxeAt'], 0, 1000000) ||
+        !integer(data['shifts'] ?? 0, 0, maxShifts) ||
         !integer(data['lastMergeChain'], 0, 7) ||
         !integer(data['bestMergeChain'], 0, 7) ||
         !integer(data['mergeCount'], 0, 7000000) ||
@@ -252,7 +289,8 @@ class MergeCampController extends ChangeNotifier {
       if ((!emptyStart && !guidedStart) ||
           data['score'] != 0 ||
           highest != 1 ||
-          data['trailAxes'] != 1) {
+          data['trailAxes'] != 1 ||
+          (data['shifts'] ?? 0) != 0) {
         return false;
       }
     }
@@ -289,6 +327,9 @@ class MergeCampController extends ChangeNotifier {
     _placements = placements;
     _trailAxes = data['trailAxes'] as int;
     _lastAwardedAxeAt = awardedAt;
+    _shifts = (data['shifts'] ?? 0) as int;
+    _lastEarnedShift = false;
+    _lastShiftMoves = const <ShiftMove>[];
     _lastMergeChain = data['lastMergeChain'] as int;
     _bestMergeChain = bestChain;
     _mergeCount = merges;
@@ -309,6 +350,8 @@ class MergeCampController extends ChangeNotifier {
 
     _lastMergeChain = 0;
     _lastMergeSteps = const <MergeStep>[];
+    _lastEarnedShift = false;
+    _lastShiftMoves = const <ShiftMove>[];
     _lastPlacedIndex = index;
     final placedTier = _previewTiers.removeAt(0);
     _board[index] = placedTier;
@@ -325,6 +368,10 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = mergeCount;
     _bestMergeChain = max(_bestMergeChain, mergeCount);
     _awardTrailAxeIfReady();
+    if (steps.length >= chainForShift ||
+        steps.any((step) => step.absorbed.length + 1 >= bigShiftCluster)) {
+      _lastEarnedShift = grantShift(notify: false);
+    }
     _previewTiers.add(_rollNextTier());
     if (_board.every((cell) => cell != null) && _trailAxes == 0) {
       _isGameOver = true;
@@ -347,6 +394,90 @@ class MergeCampController extends ChangeNotifier {
     _trailAxes += 1;
     notifyListeners();
     return true;
+  }
+
+  /// Grants one Shift (big merge or mission reward). Returns false at the cap
+  /// or after game over.
+  bool grantShift({bool notify = true}) {
+    if (_isGameOver || _shifts >= maxShifts) return false;
+    _shifts += 1;
+    if (notify) notifyListeners();
+    return true;
+  }
+
+  /// Slides every camp as far as it goes toward [direction], then merges
+  /// every touching group of three or more. Nothing moves, nothing is spent
+  /// ([MergeAction.blocked]). Placements, piece draws and the Trail Axe clock
+  /// are not touched.
+  MergeResult useShift(ShiftDirection direction) {
+    if (_isGameOver) {
+      return const MergeResult(MergeAction.gameOver);
+    }
+    if (_shifts == 0) {
+      return const MergeResult(MergeAction.noTool);
+    }
+    final moves = <ShiftMove>[];
+    final slid = List<int?>.filled(cellCount, null);
+    for (var line = 0; line < boardWidth; line++) {
+      var next = 0;
+      for (var step = 0; step < boardWidth; step++) {
+        final from = _shiftCell(direction, line, step);
+        final tier = _board[from];
+        if (tier == null) continue;
+        final to = _shiftCell(direction, line, next);
+        next += 1;
+        slid[to] = tier;
+        if (to != from) moves.add(ShiftMove(from: from, to: to, tier: tier));
+      }
+    }
+    if (moves.isEmpty) {
+      return const MergeResult(MergeAction.blocked);
+    }
+
+    _board = slid;
+    _shifts -= 1;
+    _lastEarnedShift = false;
+    _lastPlacedIndex = null;
+    _lastShiftMoves = List.unmodifiable(moves);
+    final steps = <MergeStep>[];
+    var bestPass = 0;
+    // Scan wall-first so a group merges at the cell nearest the wall. Merging
+    // only removes tiles and its chain is followed from the origin, so one
+    // scan settles the board.
+    for (var step = 0; step < boardWidth; step++) {
+      for (var line = 0; line < boardWidth; line++) {
+        final index = _shiftCell(direction, line, step);
+        final tier = _board[index];
+        if (tier == null || _connectedCluster(_board, index, tier).length < 3) {
+          continue;
+        }
+        final pass = _resolveMergeSteps(_board, index);
+        bestPass = max(bestPass, pass.length);
+        steps.addAll(pass);
+      }
+    }
+    for (final step in steps) {
+      _score += step.points;
+      _highestTier = max(_highestTier, step.toTier);
+    }
+    _lastMergeSteps = List.unmodifiable(steps);
+    _mergeCount += steps.length;
+    _lastMergeChain = bestPass;
+    _bestMergeChain = max(_bestMergeChain, bestPass);
+    notifyListeners();
+    return const MergeResult(MergeAction.shifted);
+  }
+
+  /// Cell [step] cells away from the wall [direction] points at, in row or
+  /// column [line].
+  int _shiftCell(ShiftDirection direction, int line, int step) {
+    const last = boardWidth - 1;
+    return switch (direction) {
+      ShiftDirection.left => line * boardWidth + step,
+      ShiftDirection.right => line * boardWidth + (last - step),
+      ShiftDirection.up => step * boardWidth + line,
+      ShiftDirection.down => (last - step) * boardWidth + line,
+    };
   }
 
   /// Adds bonus points (mission reward) without touching any rule. Ignored
@@ -379,6 +510,8 @@ class MergeCampController extends ChangeNotifier {
     _board[index] = null;
     _trailAxes -= 1;
     _lastMergeChain = 0;
+    _lastEarnedShift = false;
+    _lastShiftMoves = const <ShiftMove>[];
     notifyListeners();
     return const MergeResult(MergeAction.removed);
   }
@@ -460,6 +593,7 @@ class MergeCampController extends ChangeNotifier {
     int placements = 0,
     int trailAxes = 1,
     int lastAwardedAxeAt = 0,
+    int shifts = 0,
     List<int>? previewTiers,
     bool isGameOver = false,
     int mergeCount = 0,
@@ -473,6 +607,9 @@ class MergeCampController extends ChangeNotifier {
     _placements = placements;
     _trailAxes = trailAxes;
     _lastAwardedAxeAt = lastAwardedAxeAt;
+    _shifts = shifts;
+    _lastEarnedShift = false;
+    _lastShiftMoves = const <ShiftMove>[];
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = isGameOver;

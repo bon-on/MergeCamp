@@ -34,6 +34,7 @@ class CampHudLayout extends StatelessWidget {
     this.onSkipPractice,
     this.coachHint,
     required this.trailAxeMode,
+    required this.shiftMode,
     required this.soundMuted,
     required this.loopingArt,
     required this.shakeSerial,
@@ -52,6 +53,8 @@ class CampHudLayout extends StatelessWidget {
     required this.onToggleSound,
     required this.onRestart,
     required this.onToggleTrailAxe,
+    required this.onToggleShift,
+    required this.onShift,
     required this.onChainDone,
     required this.onDiscoveryDone,
     required this.onToastDone,
@@ -69,6 +72,9 @@ class CampHudLayout extends StatelessWidget {
   /// One-line next step shown on the board right after the practice merge.
   final String? coachHint;
   final bool trailAxeMode;
+
+  /// Shift is armed: the board waits for a direction.
+  final bool shiftMode;
   final bool soundMuted;
   final bool loopingArt;
   final int shakeSerial;
@@ -89,6 +95,8 @@ class CampHudLayout extends StatelessWidget {
   final VoidCallback onToggleSound;
   final VoidCallback onRestart;
   final VoidCallback onToggleTrailAxe;
+  final VoidCallback onToggleShift;
+  final ValueChanged<ShiftDirection> onShift;
   final VoidCallback onChainDone;
   final VoidCallback onDiscoveryDone;
   final ValueChanged<ToastMessage> onToastDone;
@@ -160,6 +168,61 @@ class CampHudLayout extends StatelessWidget {
     );
   }
 
+  /// Direction pad over the bottom row while a Shift waits for its way.
+  Widget _shiftBar(CampPalette palette) {
+    Widget arrow(ShiftDirection direction, IconData icon, String label) {
+      return IconButton.filledTonal(
+        key: ValueKey('shift-${direction.name}'),
+        tooltip: 'Slide $label',
+        visualDensity: VisualDensity.compact,
+        onPressed: () => onShift(direction),
+        icon: Icon(icon),
+      );
+    }
+
+    return Positioned(
+      key: const ValueKey('shift-bar'),
+      left: 4,
+      right: 4,
+      bottom: 4,
+      child: Material(
+        color: palette.panel,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            children: [
+              Text(
+                'Slide camps:',
+                style: TextStyle(
+                  color: palette.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              arrow(ShiftDirection.left, Icons.arrow_back_rounded, 'left'),
+              arrow(ShiftDirection.up, Icons.arrow_upward_rounded, 'up'),
+              arrow(ShiftDirection.down, Icons.arrow_downward_rounded, 'down'),
+              arrow(ShiftDirection.right, Icons.arrow_forward_rounded, 'right'),
+              TextButton(
+                key: const ValueKey('shift-cancel'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                ),
+                onPressed: onToggleShift,
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _board(
     CampPalette palette,
     bool loopingArt, {
@@ -180,7 +243,9 @@ class CampHudLayout extends StatelessWidget {
       shakeSerial: shakeSerial,
       onCellTap: onCellTap,
       overlays: [
-        if (guidedIndex != null)
+        if (shiftMode)
+          _shiftBar(palette)
+        else if (guidedIndex != null)
           _captionBar(
             palette,
             'Tap the glowing plot to merge!',
@@ -197,7 +262,7 @@ class CampHudLayout extends StatelessWidget {
               onDone: onChainDone,
             ),
           ),
-        if (toastsOnBoard)
+        if (toastsOnBoard && !shiftMode)
           Positioned(
             left: 8,
             right: 8,
@@ -239,8 +304,11 @@ class CampHudLayout extends StatelessWidget {
 
   String get _hint {
     if (trailAxeMode) return 'Tap a camp tile to clear it. Esc cancels.';
+    if (shiftMode) {
+      return 'Pick a direction. Camps slide that way. Esc cancels.';
+    }
     if (cursor != null) {
-      return 'Arrows/WASD move, Enter place, X axe, R restart.';
+      return 'Arrows/WASD move, Enter place, X axe, C shift, R restart.';
     }
     return 'Connect 3 matching camps to merge them.';
   }
@@ -310,6 +378,16 @@ class CampHudLayout extends StatelessWidget {
       onPressed: controller.canUseTrailAxe || trailAxeMode
           ? onToggleTrailAxe
           : null,
+    );
+  }
+
+  Widget _shiftButton(CampPalette palette, {bool compact = false}) {
+    return ShiftButton(
+      palette: palette,
+      charges: controller.shifts,
+      selected: shiftMode,
+      compact: compact,
+      onPressed: controller.canUseShift || shiftMode ? onToggleShift : null,
     );
   }
 
@@ -446,6 +524,13 @@ class CampHudLayout extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           highlight: trailAxeMode ? palette.accent : null,
           child: _axeButton(palette),
+        ),
+        const SizedBox(height: 12),
+        CampPanel(
+          palette: palette,
+          padding: const EdgeInsets.all(8),
+          highlight: shiftMode ? palette.accent : null,
+          child: _shiftButton(palette),
         ),
         const SizedBox(height: 12),
         CampPanel(
@@ -665,6 +750,18 @@ class CampHudLayout extends StatelessWidget {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: _axeButton(palette, compact: true),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              CampPanel(
+                palette: palette,
+                padding: const EdgeInsets.all(6),
+                highlight: shiftMode ? palette.accent : null,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _shiftButton(palette, compact: true),
                   ),
                 ),
               ),

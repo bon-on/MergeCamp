@@ -38,6 +38,9 @@ class FxTiming {
   static const Duration popup = Duration(milliseconds: 800);
   static const Duration removal = Duration(milliseconds: 300);
 
+  /// Camps gliding to their new cells after a Shift.
+  static const Duration slide = Duration(milliseconds: 160);
+
   /// When the absorbed tiles of merge [chainIndex] (1-based) start flying.
   static Duration flightStart(int chainIndex) =>
       firstFlight + stagger * (chainIndex - 1);
@@ -61,11 +64,23 @@ abstract class _FxEvent {
 }
 
 class _PlaceEvent extends _FxEvent {
-  _PlaceEvent(this.index, this.placedTier, this.steps);
+  _PlaceEvent(
+    this.index,
+    this.placedTier,
+    this.steps, {
+    this.lead = Duration.zero,
+    this.drop = true,
+  });
 
   final int index;
   final int placedTier;
   final List<MergeStep> steps;
+
+  /// Wait on the fx clock before this event starts (a Shift's slide).
+  final Duration lead;
+
+  /// Whether the origin tile drops in; a camp that slid in already exists.
+  final bool drop;
 
   // Set when a later placement interrupts this one: only particles and
   // popups keep playing.
@@ -76,15 +91,19 @@ class _PlaceEvent extends _FxEvent {
       : FxTiming.impact(steps.last.chainIndex) + FxTiming.pop;
 
   @override
-  Duration get length => steps.isEmpty
-      ? FxTiming.drop
-      : FxTiming.impact(steps.last.chainIndex) + FxTiming.popup;
+  Duration get length =>
+      lead +
+      (steps.isEmpty
+          ? FxTiming.drop
+          : FxTiming.impact(steps.last.chainIndex) + FxTiming.popup);
 
   @override
   int? get coverCell => index;
 
+  /// [t] counts from the event's registration; the cover starts after [lead].
   @override
-  bool coverActive(Duration t) => !coverCancelled && t < coverLength;
+  bool coverActive(Duration t) =>
+      !coverCancelled && t >= lead && t - lead < coverLength;
 }
 
 class _RemoveEvent extends _FxEvent {
@@ -95,6 +114,29 @@ class _RemoveEvent extends _FxEvent {
 
   @override
   Duration get length => FxTiming.removal + const Duration(milliseconds: 200);
+}
+
+/// One camp gliding from [from] to [to] after a Shift. A camp that does not
+/// move ([from] == [to]) is held in place so a merge that follows can start
+/// from its old tier.
+class _ShiftEvent extends _FxEvent {
+  _ShiftEvent(this.from, this.to, this.tier);
+
+  final int from;
+  final int to;
+  final int tier;
+
+  // Set when a later action interrupts the slide.
+  bool cancelled = false;
+
+  @override
+  Duration get length => FxTiming.slide;
+
+  @override
+  int? get coverCell => to;
+
+  @override
+  bool coverActive(Duration t) => !cancelled && t < FxTiming.slide;
 }
 
 /// Queue of board effects. The screen pushes events; [BoardFxLayer] plays
@@ -118,6 +160,33 @@ class BoardFx extends ChangeNotifier {
   void addPlacement(int index, int placedTier, List<MergeStep> steps) {
     _cancelCovers();
     _events.add(_PlaceEvent(index, placedTier, steps));
+    _syncHidden();
+    notifyListeners();
+  }
+
+  /// Camps slid after a Shift; they glide to their new cells.
+  /// [merges] are the groups it then merges, one list of steps per group;
+  /// they play after the slide.
+  void addShift(
+    List<ShiftMove> moves, {
+    List<List<MergeStep>> merges = const <List<MergeStep>>[],
+  }) {
+    if (moves.isEmpty) return;
+    _cancelCovers();
+    for (final move in moves) {
+      _events.add(_ShiftEvent(move.from, move.to, move.tier));
+    }
+    for (final group in merges) {
+      _events.add(
+        _PlaceEvent(
+          group.first.origin,
+          group.first.fromTier,
+          group,
+          lead: FxTiming.slide,
+          drop: false,
+        ),
+      );
+    }
     _syncHidden();
     notifyListeners();
   }
@@ -155,6 +224,7 @@ class BoardFx extends ChangeNotifier {
   void _cancelCovers() {
     for (final event in _events) {
       if (event is _PlaceEvent) event.coverCancelled = true;
+      if (event is _ShiftEvent) event.cancelled = true;
     }
   }
 
@@ -261,12 +331,31 @@ class _BoardFxLayerState extends State<BoardFxLayer>
 
     for (final event in events) {
       final now = widget.fx._clock;
-      final t = now - (event.start ?? now);
+      var t = now - (event.start ?? now);
       final seed = event.seed;
       if (event is _PlaceEvent) {
+        t -= event.lead;
+        if (t < Duration.zero) continue;
         _buildPlace(event, t, seed, g, palette, tiles, sparks, popups);
       } else if (event is _RemoveEvent) {
         _buildRemove(event, t, seed, g, tiles, sparks);
+      } else if (event is _ShiftEvent && event.coverActive(t)) {
+        final f = Curves.easeOutCubic.transform(
+          (t.inMicroseconds / FxTiming.slide.inMicroseconds).clamp(0.0, 1.0),
+        );
+        final from = g.cellRect(event.from);
+        final to = g.cellRect(event.to);
+        tiles.add(
+          _tileAt(
+            Rect.fromCenter(
+              center: Offset.lerp(from.center, to.center, f)!,
+              width: g.cell,
+              height: g.cell,
+            ),
+            event.tier,
+            key: ValueKey('fx-shift-${identityHashCode(event)}'),
+          ),
+        );
       }
     }
 
@@ -344,7 +433,7 @@ class _BoardFxLayerState extends State<BoardFxLayer>
       var scale = Curves.easeOutBack.transform(
         (ms / FxTiming.drop.inMilliseconds).clamp(0.0, 1.0),
       );
-      scale = 0.45 + 0.55 * scale;
+      scale = e.drop ? 0.45 + 0.55 * scale : 1.0;
       for (final step in e.steps) {
         final hit = FxTiming.impact(step.chainIndex).inMilliseconds;
         if (ms >= hit) {

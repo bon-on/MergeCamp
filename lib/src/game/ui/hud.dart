@@ -302,6 +302,100 @@ class TrailAxeButton extends StatelessWidget {
   }
 }
 
+/// Shift toggle: slides every camp one way. The compact form drops the label
+/// so it fits next to the Trail Axe in a narrow strip.
+class ShiftButton extends StatelessWidget {
+  const ShiftButton({
+    super.key,
+    required this.palette,
+    required this.charges,
+    required this.selected,
+    required this.onPressed,
+    this.compact = false,
+  });
+
+  final CampPalette palette;
+  final int charges;
+  final bool selected;
+  final VoidCallback? onPressed;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final bg = selected
+        ? palette.accent
+        : palette.textSecondary.withValues(alpha: enabled ? 0.14 : 0.07);
+    final fg = selected ? palette.onAccent : palette.textPrimary;
+    final icon = Icon(
+      Icons.open_with_rounded,
+      color: fg,
+      size: compact ? 24 : 28,
+    );
+    final count = Text(
+      'x$charges',
+      key: const ValueKey('shift-count'),
+      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w800),
+    );
+    return Tooltip(
+      message:
+          'Shift slides every camp one way. '
+          'Earn it with a 5+ merge, a x3 chain or a Big merge mission.',
+      child: Semantics(
+        button: true,
+        toggled: selected,
+        label: 'Shift, $charges charge',
+        child: Material(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            key: const ValueKey('shift-button'),
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 10 : 14,
+                vertical: compact ? 8 : 12,
+              ),
+              child: Opacity(
+                opacity: enabled || selected ? 1 : 0.55,
+                child: compact
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [icon, count],
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          icon,
+                          const SizedBox(width: 8),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                selected ? 'Pick a way' : 'Shift',
+                                style: TextStyle(
+                                  color: fg,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              count,
+                            ],
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 IconData missionIcon(MissionKind kind) => switch (kind) {
   MissionKind.placeTiles => Icons.add_box_rounded,
   MissionKind.makeChain => Icons.link_rounded,
