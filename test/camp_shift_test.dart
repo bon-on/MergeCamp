@@ -206,9 +206,9 @@ void main() {
     });
 
     test('the first tier 6 with a full charge keeps one and is spent', () {
-      final c = _loaded({0: 5, 1: 5}, shifts: 1, nextTier: 5);
+      final c = _loaded({0: 5, 1: 5}, shifts: 2, nextTier: 5);
       c.place(2);
-      expect(c.shifts, 1);
+      expect(c.shifts, 2);
       expect(c.lastEarnedShift, isFalse);
       // The chance is gone for the run: highestTier already moved on.
       expect(c.highestTier, 6);
@@ -248,14 +248,14 @@ void main() {
       expect(c.lastEarnedShift, isTrue);
     });
 
-    test('an ordinary 3-merge earns nothing and the cap is 1', () {
+    test('an ordinary 3-merge earns nothing and the cap is 2', () {
       final plain = _loaded({0: 1, 1: 1}, shifts: 0);
       plain.place(2);
       expect(plain.lastMergeSteps, hasLength(1));
       expect(plain.shifts, 0);
       expect(plain.lastEarnedShift, isFalse);
 
-      final full = _loaded({0: 1, 1: 1, 3: 1, 7: 1}, shifts: 1);
+      final full = _loaded({0: 1, 1: 1, 3: 1, 7: 1}, shifts: 2);
       full.place(2);
       expect(full.shifts, MergeCampController.maxShifts);
       expect(full.lastEarnedShift, isFalse);
@@ -286,7 +286,7 @@ void main() {
     test('rejects an out of range Shift count', () {
       final c = _loaded({5: 1, 6: 1});
       final data = Map<String, dynamic>.of(c.toSnapshot());
-      for (final bad in [-1, 2, '1']) {
+      for (final bad in [-1, 3, '1']) {
         data['shifts'] = bad;
         expect(MergeCampController().restoreSnapshot(data), isFalse);
       }

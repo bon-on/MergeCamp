@@ -272,7 +272,7 @@ void main() {
   });
 
   testWidgets(
-    'missions: three are shown; a 4-tile merge earns a Shift and pays a Trail Axe',
+    'missions: three are shown; a 4-tile merge earns a Shift and the mission pays a second one',
     (tester) async {
       final h = await _pump(tester);
       expect(find.byKey(const ValueKey('mission-row')), findsNWidgets(3));
@@ -287,9 +287,9 @@ void main() {
       await tester.pump();
 
       expect(h.missions.completedThisRun, 1);
-      // The merge itself earned the Shift, so the mission pays the next tool.
-      expect(h.controller.shifts, 1);
-      expect(h.controller.trailAxes, 2);
+      // The merge earned one Shift and the mission pays a second one.
+      expect(h.controller.shifts, 2);
+      expect(h.controller.trailAxes, 1);
       // Only the latest two toasts stay, so the mission one may already be
       // gone behind the first-merge and Shift ones.
       await tester.pump(const Duration(seconds: 3));
@@ -305,13 +305,13 @@ void main() {
     board[1] = 1;
     board[2] = 1;
     board[3] = 1;
-    h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 2, shifts: 1);
+    h.controller.debugLoadBoard(board, nextTier: 1, trailAxes: 2, shifts: 2);
     await tester.tap(_cell(0));
     await tester.pump();
     // 4 tiles * 12 * tier 2 = 96 points, plus the 150 mission bonus.
     expect(h.controller.score, 96 + 150);
     expect(h.controller.trailAxes, 2);
-    expect(h.controller.shifts, 1);
+    expect(h.controller.shifts, 2);
     expect(find.textContaining('(+150)'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });

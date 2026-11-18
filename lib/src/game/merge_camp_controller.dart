@@ -67,8 +67,8 @@ class MergeCampController extends ChangeNotifier {
   static const int previewCount = 3;
   static const int maxTrailAxes = 2;
 
-  /// Shift (step one camp one cell) holds one charge at most.
-  static const int maxShifts = 1;
+  /// Shift (step one camp one cell) holds two charges at most.
+  static const int maxShifts = 2;
 
   /// A single placement merging this many tiles at once earns a Shift.
   static const int bigShiftCluster = 4;
