@@ -310,22 +310,22 @@ void main() {
     });
 
     testWidgets(
-      'pick a camp, then a direction, steps it and spends the charge',
+      'pick a camp, then a neighbor cell, steps it and spends the charge',
       (tester) async {
         final c = _loaded({5: 1, 10: 2});
         await _pump(tester, c);
         await tester.tap(find.byKey(const ValueKey('shift-button')));
         await tester.pump();
-        expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+        expect(find.byKey(const ValueKey('shift-target')), findsNothing);
         await tester.tap(_cell(5));
         await tester.pump();
-        expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
-        await tester.tap(find.byKey(const ValueKey('shift-right')));
+        expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
+        await tester.tap(_cell(6));
         await tester.pump();
         expect(c.board, _board({6: 1, 10: 2}));
         expect(c.shifts, 0);
         expect(c.placements, 4);
-        expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+        expect(find.byKey(const ValueKey('shift-target')), findsNothing);
         await tester.pumpAndSettle(const Duration(seconds: 2));
       },
     );
@@ -339,7 +339,7 @@ void main() {
       await tester.pump();
       await tester.tap(_cell(6));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-up')));
+      await tester.tap(_cell(2));
       await tester.pump();
       expect(c.board, _board({2: 2}));
       await tester.pump(const Duration(milliseconds: 200));
@@ -356,7 +356,7 @@ void main() {
       await tester.pump();
       await tester.tap(_cell(5));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-right')));
+      await tester.tap(_cell(6));
       await tester.pump();
       expect(c.board, _board({6: 1}));
       await tester.pumpAndSettle(const Duration(seconds: 3));
@@ -373,44 +373,71 @@ void main() {
       await tester.tap(_cell(9));
       await tester.pump();
       expect(c.placements, 4);
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       await tester.tap(_cell(5));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
       await tester.tap(_cell(5));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       expect(c.shifts, 1);
     });
 
-    testWidgets('a direction past the wall is disabled', (tester) async {
-      final c = _loaded({4: 1});
+    testWidgets('only the cells the camp can step onto glow', (tester) async {
+      final c = _loaded({4: 1, 9: 2});
       await _pump(tester, c);
       await tester.tap(find.byKey(const ValueKey('shift-button')));
       await tester.pump();
       await tester.tap(_cell(4));
       await tester.pump();
-      bool enabled(String name) =>
-          tester
-              .widget<IconButton>(find.byKey(ValueKey('shift-$name')))
-              .onPressed !=
-          null;
-      expect(enabled('left'), isFalse);
-      expect(enabled('right'), isTrue);
-      expect(enabled('up'), isTrue);
-      expect(enabled('down'), isTrue);
+      // Left is a wall: right (5), up (0) and down (8); not the far camp.
+      expect(find.byKey(const ValueKey('shift-target')), findsNWidgets(3));
+      await tester.tap(_cell(15));
+      await tester.pump();
+      expect(c.shifts, 1);
+      expect(c.board, _board({4: 1, 9: 2}));
     });
 
-    testWidgets('cancel closes the bar and keeps the charge', (tester) async {
+    testWidgets('tapping a far camp switches the pick without moving', (
+      tester,
+    ) async {
+      final c = _loaded({5: 1, 13: 2});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(5));
+      await tester.pump();
+      await tester.tap(_cell(13));
+      await tester.pump();
+      expect(c.board, _board({5: 1, 13: 2}));
+      expect(c.shifts, 1);
+      // Cell 13 now has three neighbors inside the board: 9, 12 and 14.
+      expect(find.byKey(const ValueKey('shift-target')), findsNWidgets(3));
+      expect(find.byKey(const ValueKey('keyboard-cursor')), findsOneWidget);
+    });
+
+    testWidgets('a camp on a target cell is marked as cleared', (tester) async {
+      final c = _loaded({5: 1, 6: 2});
+      await _pump(tester, c);
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
+      await tester.pump();
+      await tester.tap(_cell(5));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('shift-clear-mark')), findsOneWidget);
+    });
+
+    testWidgets('the Shift button cancels and keeps the charge', (
+      tester,
+    ) async {
       final c = _loaded({5: 1});
       await _pump(tester, c);
       await tester.tap(find.byKey(const ValueKey('shift-button')));
       await tester.pump();
       await tester.tap(_cell(5));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-cancel')));
+      await tester.tap(find.byKey(const ValueKey('shift-button')));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       expect(_armed(tester), isFalse);
       expect(c.shifts, 1);
     });
@@ -428,33 +455,11 @@ void main() {
       expect(find.text('Pick a tile'), findsNothing);
       await tester.tap(_cell(5));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
       await tester.tap(find.byKey(const ValueKey('trail-axe-button')));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       expect(find.text('Pick a tile'), findsOneWidget);
-    });
-
-    testWidgets('the bar keeps off the picked camp row', (tester) async {
-      await _pump(tester, _loaded({1: 1, 13: 1}));
-      await tester.tap(find.byKey(const ValueKey('shift-button')));
-      await tester.pump();
-      final board = tester.getRect(find.byType(GridView));
-      await tester.tap(_cell(1));
-      await tester.pump();
-      expect(
-        tester.getCenter(find.byKey(const ValueKey('shift-bar'))).dy,
-        greaterThan(board.center.dy),
-      );
-      // The bar covers the bottom row, so drop the pick before choosing there.
-      await tester.tap(_cell(1));
-      await tester.pump();
-      await tester.tap(_cell(13));
-      await tester.pump();
-      expect(
-        tester.getCenter(find.byKey(const ValueKey('shift-bar'))).dy,
-        lessThan(board.center.dy),
-      );
     });
 
     testWidgets('keyboard: C arms, Enter picks the cursor camp, arrow steps', (
@@ -473,7 +478,7 @@ void main() {
       expect(find.byKey(const ValueKey('keyboard-cursor')), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       expect(c.board, _board({9: 1, 10: 2}));
@@ -490,10 +495,10 @@ void main() {
       await tester.pump();
       await tester.tap(_cell(5));
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       expect(_armed(tester), isTrue);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
@@ -569,7 +574,7 @@ void main() {
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
       await tester.pump();
-      expect(find.byKey(const ValueKey('shift-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('shift-target')), findsNothing);
       expect(c.shifts, 1);
     });
 
@@ -623,7 +628,7 @@ void main() {
       await tester.pump();
       await tester.tap(_cell(6));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('shift-up')));
+      await tester.tap(_cell(2));
       await tester.pump();
       expect(c.shifts, 1);
       expect(find.textContaining('Shift earned'), findsOneWidget);
@@ -647,23 +652,14 @@ void main() {
       Size(844, 390),
       Size(1280, 720),
     ]) {
-      testWidgets('the Shift bar fits $size', (tester) async {
+      testWidgets('picking a camp fits $size', (tester) async {
         await _pump(tester, _loaded({5: 1, 13: 1}), size: size);
         await tester.tap(find.byKey(const ValueKey('shift-button')));
         await tester.pump();
-        // Picked camp and the cell below/above it stay uncovered.
         for (final cell in [5, 13]) {
           await tester.tap(_cell(cell));
           await tester.pump();
-          final bar = tester.getRect(find.byKey(const ValueKey('shift-bar')));
-          final near = cell == 13 ? [13, 9] : [5, 9];
-          for (final index in near) {
-            expect(
-              bar.overlaps(tester.getRect(_cell(index))),
-              isFalse,
-              reason: 'bar covers cell $index at $size',
-            );
-          }
+          expect(find.byKey(const ValueKey('shift-target')), findsWidgets);
           expect(tester.takeException(), isNull);
           await tester.tap(_cell(cell));
           await tester.pump();

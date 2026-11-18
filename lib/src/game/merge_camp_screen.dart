@@ -88,7 +88,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   final BoardFx _fx = BoardFx();
   bool _trailAxeMode = false;
   bool _shiftModeOn = false;
-  // Camp picked to step; the direction bar waits for it.
+  // Camp picked to step; its neighbor cells glow while it is set.
   int? _shiftFrom;
   bool get _shiftMode => _shiftModeOn;
   set _shiftMode(bool on) {
@@ -1198,8 +1198,18 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _focusNode.requestFocus();
   }
 
-  /// Shift mode: a tap picks the camp to move, a second tap drops the pick.
+  /// Shift mode: a tap picks the camp to move; with one picked, a tap on a
+  /// highlighted neighbor moves it there and a tap on the camp drops the pick.
   Future<void> _pickShiftCamp(int index) async {
+    final from = _shiftFrom;
+    if (from != null && index != from) {
+      for (final direction in ShiftDirection.values) {
+        if (MergeCampController.shiftTarget(from, direction) == index) {
+          await _applyShift(direction);
+          return;
+        }
+      }
+    }
     if (_controller.board[index] == null) {
       await _feedback.warning();
       return;
@@ -1233,8 +1243,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
             await (chain >= 2 ? _feedback.chain(chain) : _feedback.merge());
           }
         case MergeAction.blocked:
-          // Nothing could move that way: keep the mode so another direction
-          // can be picked.
+          // Nothing could move that way: keep the mode so another camp can
+          // be picked.
           await _feedback.warning();
         case MergeAction.placed:
         case MergeAction.merged:
@@ -1338,8 +1348,6 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             shiftMode: _shiftMode,
                             shiftFrom: _shiftFrom,
                             onToggleShift: _toggleShift,
-                            onShift: (direction) =>
-                                unawaited(_applyShift(direction)),
                             soundMuted: _soundMuted,
                             loopingArt: loopingArt,
                             shakeSerial: _shakeSerial,

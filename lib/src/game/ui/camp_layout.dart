@@ -55,7 +55,6 @@ class CampHudLayout extends StatelessWidget {
     required this.onRestart,
     required this.onToggleTrailAxe,
     required this.onToggleShift,
-    required this.onShift,
     required this.onChainDone,
     required this.onDiscoveryDone,
     required this.onToastDone,
@@ -74,10 +73,10 @@ class CampHudLayout extends StatelessWidget {
   final String? coachHint;
   final bool trailAxeMode;
 
-  /// Shift is armed: the board waits for a direction.
+  /// Shift is armed: the board waits for a camp to pick.
   final bool shiftMode;
 
-  /// Camp picked for the Shift; the direction bar shows once it is set.
+  /// Camp picked for the Shift; its neighbor cells glow once it is set.
   final int? shiftFrom;
   final bool soundMuted;
   final bool loopingArt;
@@ -100,7 +99,6 @@ class CampHudLayout extends StatelessWidget {
   final VoidCallback onRestart;
   final VoidCallback onToggleTrailAxe;
   final VoidCallback onToggleShift;
-  final ValueChanged<ShiftDirection> onShift;
   final VoidCallback onChainDone;
   final VoidCallback onDiscoveryDone;
   final ValueChanged<ToastMessage> onToastDone;
@@ -172,77 +170,6 @@ class CampHudLayout extends StatelessWidget {
     );
   }
 
-  /// Direction pad over the board while a picked camp waits for its way. One
-  /// short line on the far side so it never covers the picked camp's row or
-  /// the cell it would step onto.
-  Widget _shiftBar(CampPalette palette, int from) {
-    Widget arrow(ShiftDirection direction, IconData icon, String label) {
-      return IconButton.filledTonal(
-        key: ValueKey('shift-${direction.name}'),
-        tooltip: 'Step $label',
-        style: IconButton.styleFrom(
-          minimumSize: const Size(36, 32),
-          padding: EdgeInsets.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: MergeCampController.shiftTarget(from, direction) == null
-            ? null
-            : () => onShift(direction),
-        icon: Icon(icon, size: 20),
-      );
-    }
-
-    final low = from ~/ MergeCampController.boardWidth >= 2;
-    return Positioned(
-      key: const ValueKey('shift-bar'),
-      left: 4,
-      right: 4,
-      top: low ? 4 : null,
-      bottom: low ? null : 4,
-      child: Material(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          height: 36,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                arrow(ShiftDirection.left, Icons.arrow_back_rounded, 'left'),
-                const SizedBox(width: 4),
-                arrow(ShiftDirection.up, Icons.arrow_upward_rounded, 'up'),
-                const SizedBox(width: 4),
-                arrow(
-                  ShiftDirection.down,
-                  Icons.arrow_downward_rounded,
-                  'down',
-                ),
-                const SizedBox(width: 4),
-                arrow(
-                  ShiftDirection.right,
-                  Icons.arrow_forward_rounded,
-                  'right',
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  key: const ValueKey('shift-cancel'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                  ),
-                  onPressed: onToggleShift,
-                  child: const Text('Cancel'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _board(
     CampPalette palette,
     bool loopingArt, {
@@ -255,6 +182,12 @@ class CampHudLayout extends StatelessWidget {
       cursor: shiftMode ? (shiftFrom ?? cursor) : cursor,
       axeMode: trailAxeMode,
       shiftMode: shiftMode,
+      shiftTargets: shiftFrom == null || !shiftMode
+          ? const <int>{}
+          : {
+              for (final d in ShiftDirection.values)
+                ?MergeCampController.shiftTarget(shiftFrom!, d),
+            },
       animateArt: loopingArt,
       nextTier: controller.nextTier,
       previewPlacement: controller.previewPlacement,
@@ -264,9 +197,7 @@ class CampHudLayout extends StatelessWidget {
       shakeSerial: shakeSerial,
       onCellTap: onCellTap,
       overlays: [
-        if (shiftMode && shiftFrom != null)
-          _shiftBar(palette, shiftFrom!)
-        else if (guidedIndex != null)
+        if (guidedIndex != null)
           _captionBar(
             palette,
             'Tap the glowing plot to merge!',
@@ -328,7 +259,7 @@ class CampHudLayout extends StatelessWidget {
     if (shiftMode) {
       return shiftFrom == null
           ? 'Tap the camp to move. Esc cancels.'
-          : 'Pick a direction. It steps one cell and clears what is there.';
+          : 'Tap a glowing cell to move there (a camp there is cleared).';
     }
     if (cursor != null) {
       return 'Arrows/WASD move, Enter place, X axe, C shift, R restart.';

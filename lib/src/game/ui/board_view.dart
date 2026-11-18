@@ -25,6 +25,7 @@ class BoardView extends StatefulWidget {
     this.previewPlacement,
     this.axeMode = false,
     this.shiftMode = false,
+    this.shiftTargets = const <int>{},
     this.animateArt = true,
     this.danger = false,
     this.pulseDanger = true,
@@ -46,6 +47,9 @@ class BoardView extends StatefulWidget {
 
   /// Shift picking: no placement preview, the cursor marks the picked camp.
   final bool shiftMode;
+
+  /// Cells the picked camp can step onto, outlined while picking.
+  final Set<int> shiftTargets;
   final bool animateArt;
 
   /// 13+ occupied cells: glowing red edge.
@@ -153,6 +157,7 @@ class _BoardViewState extends State<BoardView> {
                         index == target && !axeMode && !widget.shiftMode,
                     previewMerge: merging.contains(index),
                     guided: widget.guidedIndex == index,
+                    shiftTarget: widget.shiftTargets.contains(index),
                     previewChain: index == target ? steps.length : 0,
                     onHover: (hover) => setState(() {
                       if (hover) {
@@ -220,6 +225,7 @@ class _BoardCell extends StatefulWidget {
     this.previewOrigin = false,
     this.previewMerge = false,
     this.guided = false,
+    this.shiftTarget = false,
     this.previewChain = 0,
   });
 
@@ -239,6 +245,7 @@ class _BoardCell extends StatefulWidget {
   final bool previewOrigin;
   final bool previewMerge;
   final bool guided;
+  final bool shiftTarget;
   final int previewChain;
 
   @override
@@ -351,6 +358,35 @@ class _BoardCellState extends State<_BoardCell> {
                               )
                             : null,
                       ),
+                    ),
+                  ),
+                if (widget.shiftTarget)
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      key: const ValueKey('shift-target'),
+                      decoration: BoxDecoration(
+                        borderRadius: radius,
+                        border: Border.all(
+                          color: widget.occupied
+                              ? palette.danger
+                              : palette.accent,
+                          width: math.max(3, s * 0.05),
+                        ),
+                        color:
+                            (widget.occupied ? palette.danger : palette.accent)
+                                .withValues(alpha: 0.18),
+                      ),
+                      // A camp standing there is cleared: say so without text.
+                      child: widget.occupied
+                          ? Center(
+                              child: Icon(
+                                Icons.close_rounded,
+                                key: const ValueKey('shift-clear-mark'),
+                                color: palette.danger,
+                                size: s * 0.45,
+                              ),
+                            )
+                          : null,
                     ),
                   ),
                 if (widget.axeMode && widget.occupied)
