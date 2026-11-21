@@ -212,6 +212,59 @@ void main() {
     expect(h.controller.dailyDay, 20000);
   });
 
+  testWidgets('free play summary hooks the daily with a call to play', (
+    tester,
+  ) async {
+    final h = await _pump(tester);
+    await _qualifyingFinish(tester, h.controller);
+    final hook = find.byKey(const ValueKey('summary-daily-hook'));
+    expect(hook, findsOneWidget);
+    expect(
+      find.descendant(
+        of: hook,
+        matching: find.textContaining("play today's daily camp"),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Same pieces for everyone'), findsNothing);
+    await tester.tap(hook);
+    await tester.pumpAndSettle();
+    expect(h.controller.dailyDay, 20000);
+  });
+
+  testWidgets('free play summary shows streak and time to the next daily', (
+    tester,
+  ) async {
+    final rewarded = const CampProgress.initial().applyRun(
+      const RunSummary(
+        score: 500,
+        highestTier: 3,
+        bestChain: 1,
+        placements: 20,
+        mergeCount: 5,
+      ),
+      dailyDay: 20000,
+    );
+    final h = await _pump(tester, progress: rewarded.progress);
+    await _qualifyingFinish(tester, h.controller);
+    final hook = find.byKey(const ValueKey('summary-daily-hook'));
+    expect(
+      find.descendant(
+        of: hook,
+        matching: find.textContaining('Daily streak 1 - done today.'),
+      ),
+      findsOneWidget,
+    );
+    // The test clock sits at midnight, so a full day is left.
+    expect(
+      find.descendant(
+        of: hook,
+        matching: find.textContaining('New daily camp in 24h 0m'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a new day brings the dot back and extends the streak', (
     tester,
   ) async {

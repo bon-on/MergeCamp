@@ -359,13 +359,19 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   void _checkpointRun() {
-    if (!_progressLoaded || _restoringRun || _controller.isGameOver) return;
+    final pending = _controller.isGameOver && _secondWindOffer;
+    if (!_progressLoaded ||
+        _restoringRun ||
+        (_controller.isGameOver && !pending)) {
+      return;
+    }
     _setProgress(
       _progress.withActiveRun({
         'version': 1,
         'controller': _controller.toSnapshot(),
         'missions': _missions.toSnapshot(),
         'guidedPractice': _guidedPractice,
+        if (pending) 'secondWindPending': true,
       }),
     );
   }
@@ -376,9 +382,12 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     final controller = MergeCampController();
     final missions = MissionBoard();
     try {
+      final pending = run['secondWindPending'] == true;
       if (run['version'] != 1 ||
           !controller.restoreSnapshot(run['controller']) ||
-          controller.isGameOver ||
+          (run.containsKey('secondWindPending') && !pending) ||
+          controller.isGameOver != pending ||
+          (pending && !controller.canRevive) ||
           !missions.restoreSnapshot(run['missions']) ||
           run['guidedPractice'] is! bool) {
         _setProgress(_progress.withActiveRun(null));
@@ -398,7 +407,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _controller.restoreSnapshot(run['controller']);
       _missions.restoreSnapshot(run['missions']);
       _seenPlacements = _controller.placements;
-      _wasGameOver = false;
+      _wasGameOver = _controller.isGameOver;
       _wasDanger = _controller.occupiedCount >= dangerOccupied;
       _guidedPractice = guided;
       _cursor = guided ? _guidedPlot : null;
@@ -409,6 +418,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _milestones.clear();
       if (_controller.mergeCount > 0) _milestones.add(_Milestone.firstMerge);
       if (_controller.bestMergeChain >= 2) _milestones.add(_Milestone.chain);
+      if (pending) _offerSecondWindOrSettle();
     } finally {
       _restoringRun = false;
       controller.dispose();
@@ -637,27 +647,31 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       if (runEnded) {
         _trailAxeMode = false;
         _shiftMode = false;
-        if (widget.platform.supportsRewardedAds &&
-            !_secondWindShown &&
-            _controller.canRevive &&
-            !_guidedPractice) {
-          _secondWindOffer = true;
-          _secondWindShown = true;
-          _syncGameplay();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _secondWindOffer) _secondWindFocus.requestFocus();
-          });
-        } else {
-          _settleRunEnd();
-        }
+        _offerSecondWindOrSettle();
       }
-      if (!_controller.isGameOver) _checkpointRun();
+      _checkpointRun();
     } finally {
       _handlingChange = false;
     }
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _offerSecondWindOrSettle() {
+    if (!widget.platform.supportsRewardedAds ||
+        _secondWindShown ||
+        !_controller.canRevive ||
+        _guidedPractice) {
+      _settleRunEnd();
+      return;
+    }
+    _secondWindOffer = true;
+    _secondWindShown = true;
+    _syncGameplay();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _secondWindOffer) _secondWindFocus.requestFocus();
+    });
   }
 
   /// Settles a finished run: report, progress, result registration and the
@@ -976,7 +990,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (!mounted) return;
     setState(() {
       _toast(
-        'Daily camp: same pieces for everyone today',
+        'Daily camp: place 5+ tiles and merge to build your streak.',
         Icons.local_fire_department_rounded,
       );
     });
@@ -1554,6 +1568,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                         share: widget.resultShare,
                         busy: _breakAdInProgress,
                         animateArt: loopingArt,
+                        clock: widget.clock,
                         playAgainFocus: _playAgainFocus,
                         onPlayAgain: () => unawaited(_restartRun()),
                         onAlbum: _openAlbum,

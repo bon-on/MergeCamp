@@ -290,6 +290,11 @@ class CampHudLayout extends StatelessWidget {
           ? 'Tap the camp to move. Esc cancels.'
           : 'Tap a glowing cell to move there (a camp there is cleared).';
     }
+    if (controller.occupiedCount == MergeCampController.cellCount &&
+        controller.canUseShift &&
+        !controller.canUseTrailAxe) {
+      return 'Camp full. Use Shift to open a plot.';
+    }
     if (cursor != null) {
       return 'Arrows/WASD move, Enter place, X axe, C shift, R restart.';
     }

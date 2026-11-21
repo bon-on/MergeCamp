@@ -335,7 +335,11 @@ class MergeCampController extends ChangeNotifier {
       return false;
     }
     final occupied = board.where((tier) => tier != null).length;
-    final terminal = occupied == cellCount && data['trailAxes'] == 0;
+    final terminal = _boardLocked(
+      occupied,
+      data['trailAxes'] as int,
+      (data['shifts'] ?? 0) as int,
+    );
     if (terminal != data['isGameOver'] || occupied > placements + 2) {
       return false;
     }
@@ -435,9 +439,7 @@ class MergeCampController extends ChangeNotifier {
       _lastEarnedShift = grantShift(notify: false);
     }
     _previewTiers.add(_rollNextTier());
-    if (_board.every((cell) => cell != null) && _trailAxes == 0) {
-      _isGameOver = true;
-    }
+    _isGameOver = _boardLocked(occupiedCount, _trailAxes, _shifts);
     notifyListeners();
     return MergeResult(
       _isGameOver
@@ -447,6 +449,9 @@ class MergeCampController extends ChangeNotifier {
           : MergeAction.placed,
     );
   }
+
+  static bool _boardLocked(int occupied, int axes, int shifts) =>
+      occupied == cellCount && axes == 0 && shifts == 0;
 
   /// Grants one Trail Axe (mission reward). Returns false at the cap or after
   /// game over. Game over is only decided in [place], so a granted axe on a

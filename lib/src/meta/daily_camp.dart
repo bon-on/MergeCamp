@@ -13,6 +13,22 @@ int dayIndexOf(DateTime local) => DateTime.utc(
   local.day,
 ).difference(DateTime.utc(1970)).inDays;
 
+/// Time left until the next local calendar day after [local], i.e. until the
+/// next Daily Camp opens. Always positive.
+Duration untilNextDay(DateTime local) {
+  final next = local.isUtc
+      ? DateTime.utc(local.year, local.month, local.day + 1)
+      : DateTime(local.year, local.month, local.day + 1);
+  return next.difference(local);
+}
+
+/// "5h 12m" or "12m"; minutes round up so it never shows "0m".
+String formatCountdown(Duration d) {
+  final minutes = math.max(1, (d.inSeconds + 59) ~/ 60);
+  final h = minutes ~/ 60;
+  return h > 0 ? '${h}h ${minutes % 60}m' : '${minutes}m';
+}
+
 /// Nonzero 31-bit seed for [day]. Only small products are used so the Dart
 /// VM and dart2js compute the same value.
 int dailySeed(int day) {

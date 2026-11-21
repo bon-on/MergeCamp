@@ -148,4 +148,23 @@ void main() {
     expect(bad.refillLeft, kGraceRefillSolves);
     expect(bad.bestScore, 0);
   });
+
+  test('time until the next day counts to local midnight', () {
+    expect(
+      untilNextDay(DateTime.utc(2026, 11, 21, 18, 48)),
+      const Duration(hours: 5, minutes: 12),
+    );
+    expect(
+      untilNextDay(DateTime.utc(2026, 12, 31, 23)),
+      const Duration(hours: 1),
+    );
+    expect(untilNextDay(DateTime.utc(2026, 11, 21)), const Duration(hours: 24));
+  });
+
+  test('countdown text rounds minutes up and never shows 0m', () {
+    expect(formatCountdown(const Duration(hours: 5, minutes: 12)), '5h 12m');
+    expect(formatCountdown(const Duration(hours: 2)), '2h 0m');
+    expect(formatCountdown(const Duration(minutes: 12, seconds: 1)), '13m');
+    expect(formatCountdown(const Duration(seconds: 5)), '1m');
+  });
 }

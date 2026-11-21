@@ -66,6 +66,7 @@ class RunSummaryOverlay extends StatefulWidget {
     this.renderCard = renderResultCard,
     this.busy = false,
     this.animateArt = true,
+    this.clock = DateTime.now,
   });
 
   final RunReport report;
@@ -97,6 +98,9 @@ class RunSummaryOverlay extends StatefulWidget {
   /// True while the run break ad is showing.
   final bool busy;
   final bool animateArt;
+
+  /// Today for the daily hook; tests inject a fixed date.
+  final DateTime Function() clock;
 
   @override
   State<RunSummaryOverlay> createState() => _RunSummaryOverlayState();
@@ -332,6 +336,10 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             ),
         ]),
       ),
+      if (!widget.report.isDaily) ...[
+        const SizedBox(height: 6),
+        _dailyHook(palette),
+      ],
       if (link != null) ...[
         const SizedBox(height: 8),
         Row(
@@ -370,6 +378,62 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         ),
       ],
     ];
+  }
+
+  /// Free-play summary: the daily streak and either a tap target to play
+  /// today's Daily Camp or the time until the next one (feature-daily-camp).
+  Widget _dailyHook(CampPalette palette) {
+    final now = widget.clock();
+    final today = dayIndexOf(now);
+    final daily = widget.progress.daily;
+    final streak = streakOn(daily, today).current;
+    final done = daily.rewardedOn(today);
+    final onDaily = widget.onDaily;
+    final String text;
+    if (done) {
+      text =
+          'Daily streak $streak - done today. '
+          'New daily camp in ${formatCountdown(untilNextDay(now))}';
+    } else if (streak > 0) {
+      text = "Keep your $streak-day streak: play today's daily camp";
+    } else {
+      text = "Play today's daily camp and start a streak";
+    }
+    final tappable = !done && onDaily != null;
+    return Material(
+      key: const ValueKey('summary-daily-hook'),
+      color: palette.accent.withValues(alpha: tappable ? 0.14 : 0.06),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: tappable && !widget.busy ? onDaily : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 18,
+                color: palette.danger,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _shareText(String link) => resultShareText(
@@ -500,7 +564,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         ),
         if (!_compact)
           Text(
-            'No empty plots and no Trail Axe left.',
+            'No empty plots or tools left.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: palette.textSecondary,
@@ -684,6 +748,9 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
                 "Today's best ${formatScore(todayBest)}"
                     "${daily?.isDayBest == true ? ' (new!)' : ''}",
               'Tomorrow: streak $tomorrow, +${dailyBonusXp(tomorrow)} XP',
+              if (saved.rewardedOn(day))
+                'New daily camp in '
+                    '${formatCountdown(untilNextDay(widget.clock()))}',
             ].join('  -  '),
             key: const ValueKey('summary-daily-tomorrow'),
             style: TextStyle(

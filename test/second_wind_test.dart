@@ -192,6 +192,59 @@ void main() {
   });
 
   group('screen', () {
+    for (final rewarded in [true, false]) {
+      testWidgets('reloading a pending offer with rewarded ads: $rewarded', (
+        tester,
+      ) async {
+        final store = MemoryCampProgressStore();
+        final controller = MergeCampController();
+        final restored = MergeCampController();
+        addTearDown(controller.dispose);
+        addTearDown(restored.dispose);
+        await _pump(tester, _RewardedPlatform(), controller, store: store);
+        _loadLock(controller);
+        controller.place(15);
+        await tester.pump();
+        await tester.pump();
+        expect(store.value.activeRun?['secondWindPending'], true);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        final platform = _RewardedPlatform(rewarded: rewarded);
+        await _pump(tester, platform, restored, store: store);
+        expect(restored.isGameOver, isTrue);
+        expect(restored.board, controller.board);
+        expect(restored.placements, controller.placements);
+        expect(restored.score, controller.score);
+        expect(platform.rewardedAds, 0);
+
+        if (rewarded) {
+          expect(find.byKey(const ValueKey('second-wind-card')), findsOneWidget);
+          expect(store.value.totalXp, 0);
+          await tester.tap(find.byKey(const ValueKey('second-wind-continue')));
+          await tester.pump();
+          platform.pending!.complete(true);
+          await tester.pump();
+          await tester.pump();
+          expect(store.value.activeRun?['secondWindPending'], isNull);
+          expect(store.value.activeRun?['controller']['revived'], true);
+        } else {
+          expect(find.byKey(const ValueKey('second-wind-card')), findsNothing);
+          expect(find.text('Play again'), findsOneWidget);
+          expect(store.value.bestScore, restored.score);
+          expect(store.value.activeRun, isNull);
+          final creditedXp = store.value.totalXp;
+          expect(creditedXp, greaterThan(0));
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          final fresh = MergeCampController();
+          addTearDown(fresh.dispose);
+          await _pump(tester, platform, fresh, store: store);
+          expect(fresh.isGameOver, isFalse);
+          expect(store.value.totalXp, creditedXp);
+        }
+      });
+    }
+
     testWidgets('a lock shows the card and settles nothing yet', (
       tester,
     ) async {

@@ -43,6 +43,38 @@ Finder _cell(int index) => find
 
 void main() {
   group('Shift rules', () {
+    test('a full board with only Shift left stays playable and reloads', () {
+      final c = MergeCampController();
+      final restored = MergeCampController();
+      addTearDown(c.dispose);
+      addTearDown(restored.dispose);
+      final board = List<int?>.generate(
+        MergeCampController.cellCount,
+        (index) => (index ~/ 4 + index % 4).isEven ? 1 : 2,
+      );
+      board[15] = null;
+      c.debugLoadBoard(
+        board,
+        nextTier: 3,
+        placements: 30,
+        lastAwardedAxeAt: 30,
+        trailAxes: 0,
+        shifts: 1,
+        highestTier: 3,
+      );
+
+      expect(c.place(15).action, MergeAction.placed);
+      expect(c.canRevive, isFalse);
+      expect(restored.restoreSnapshot(c.toSnapshot()), isTrue);
+      expect(restored.canUseShift, isTrue);
+      expect(
+        restored.useShift(15, ShiftDirection.left).action,
+        MergeAction.shifted,
+      );
+      expect(restored.board[15], isNull);
+      expect(restored.shifts, 0);
+    });
+
     test('steps one camp one cell in all four directions', () {
       final expected = {
         ShiftDirection.left: 4,

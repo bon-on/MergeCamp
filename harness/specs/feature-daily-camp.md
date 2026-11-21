@@ -47,6 +47,16 @@ player a reason to come back tomorrow.
 - Entry: a header button (Daily camp) starts or resumes today's run. It shows
   a dot while today is not rewarded yet. The summary of a daily run offers
   Try again (same sequence) and Free play.
+- **Summary hook (D1)**: a free-play summary replaces the old small
+  "Same pieces for everyone" line with one compact tappable row above the
+  share buttons: the current streak and either a call to play today's daily
+  (tap starts it, same as the Daily camp button) or, once today is rewarded,
+  "Daily streak N - done today. New daily camp in 5h 12m" (time to the next
+  local midnight, minutes rounded up). A daily summary appends the same
+  "New daily camp in ..." to its tomorrow line once today is rewarded. Today
+  comes from the screen clock passed to the overlay. Play again stays the
+  default keyboard focus and the largest button; the nearest next goal
+  (feature-next-goal-share) stays pinned above it, so no extra goal is added.
 - Saved data: optional `daily` object in `camp_progress_v1`
   (`lastDay`, `streak`, `best`, `graceReady`, `refillLeft`, `total`,
   `bestDay`, `bestScore`). Old saves load without it. The run snapshot gets an
