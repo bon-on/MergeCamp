@@ -42,3 +42,7 @@ text look tiny next to it, which reads as unpolished on CrazyGames, where review
 | Requirement | Files | Verification |
 |---|---|---|
 | Side scale | `lib/src/game/ui/camp_layout.dart` | `test/large_screen_scale_test.dart` |
+
+## Evidence
+- `flutter analyze`, `flutter test` (test/large_screen_scale_test.dart), `tool/build_crazygames.sh`
+- Chrome check 2026-11-21: CrazyGames bundle in a 1920x1080 iframe shows the panels at 1.5x next to the board.
