@@ -79,11 +79,7 @@ Future<MergeCampController> _startPractice(
   );
   await tester.pump();
   await tester.pump();
-  for (var i = 0; i < 2; i++) {
-    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
-    await tester.pump();
-  }
-  await tester.tap(find.widgetWithText(FilledButton, 'Play'));
+  // A first run starts the guided merge without a card.
   await tester.pump();
   return controller;
 }

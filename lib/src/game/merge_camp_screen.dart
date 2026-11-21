@@ -131,9 +131,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _showHowTo = false;
   bool _albumOpen = false;
   bool _decorOpen = false;
-  bool _firstRun = false;
-  // The first run still owes the fixed starter missions; survives closing
-  // the card before stored progress arrives.
+  // The first run still owes the fixed starter missions until stored
+  // progress arrives.
   bool _starterPending = false;
   bool _starterPrepared = false;
   bool _guidedPractice = false;
@@ -145,7 +144,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   Set<ToolHint> _hintsSeen = {...ToolHint.values};
   ToolHint? _toolHint;
   int _toolHintPlacement = 0;
-  // Play was chosen on the first-run card before stored progress arrived.
+  // A first run waits for stored progress before its guided practice.
   bool _practiceRequested = false;
   bool _restoringRun = false;
   Future<void> _saveQueue = Future<void>.value();
@@ -404,7 +403,6 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _guidedPractice = guided;
       _cursor = guided ? _guidedPlot : null;
       _starterPrepared = true;
-      _firstRun = false;
       _starterPending = false;
       _practiceRequested = false;
       // Celebrations the restored run already passed are not repeated.
@@ -417,8 +415,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
   }
 
-  /// Starts the guided first merge once Play was chosen on the first-run
-  /// card and the stored progress has loaded (a restored run wins).
+  /// Starts the guided first merge of a first run once the stored progress
+  /// has loaded (a restored run wins; feature-instant-first-run).
   void _startRequestedPractice() {
     if (!_practiceRequested || !_progressLoaded) return;
     _practiceRequested = false;
@@ -490,13 +488,17 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       seen = await widget.howToPlayStore.loadSeen();
     } catch (_) {}
     if (!mounted) return;
+    // First run: no card, straight into the guided merge
+    // (feature-instant-first-run). The card stays one tap away on `?`.
+    final firstRun = !seen && !_starterPrepared;
     setState(() {
       _tutorialLoading = false;
-      _showHowTo = !seen;
-      _firstRun = !seen && !_starterPrepared;
-      _starterPending = _firstRun;
+      _starterPending = firstRun;
+      _practiceRequested = firstRun;
     });
     _prepareStarterMissions();
+    _startRequestedPractice();
+    if (!seen) unawaited(_markTutorialSeen());
     _syncGameplay();
   }
 
@@ -505,13 +507,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _syncGameplay();
   }
 
-  void _closeHowToPlay({bool practice = false}) {
-    setState(() {
-      _showHowTo = false;
-      _practiceRequested = practice && _firstRun;
-      _firstRun = false;
-    });
-    _startRequestedPractice();
+  void _closeHowToPlay() {
+    setState(() => _showHowTo = false);
     _checkpointRun();
     _syncGameplay();
     _refocus();
@@ -1520,7 +1517,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                   ),
                 ),
                 // Taps must not reach the board before the seen-flag read
-                // decides whether the how-to-play card opens.
+                // decides whether the guided first run starts.
                 if (_tutorialLoading || !_progressLoaded)
                   const Positioned.fill(child: AbsorbPointer()),
                 if (_secondWindOffer)
@@ -1600,7 +1597,6 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                       steps: _howToPlaySteps,
                       theme: _theme,
                       onClose: _closeHowToPlay,
-                      onPlay: () => _closeHowToPlay(practice: true),
                     ),
                   ),
               ],

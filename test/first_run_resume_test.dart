@@ -11,6 +11,7 @@ import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_progress_store.dart';
+import 'package:merge_camp/src/platform/game_platform.dart';
 import 'package:merge_camp/src/meta/camp_theme.dart';
 import 'package:merge_camp/src/meta/missions.dart';
 
@@ -65,6 +66,7 @@ Future<_Screen> _pump(
   required CampProgressStore store,
   Size size = const Size(390, 844),
   int seed = 0,
+  GamePlatform platform = const NoopGamePlatform(),
 }) async {
   for (final channel in const [
     MethodChannel('merge_camp/audio'),
@@ -97,6 +99,7 @@ Future<_Screen> _pump(
         howToPlayStore: tutorial,
         soundMuteStore: const _UnmutedStore(),
         progressStore: store,
+        platform: platform,
         animateArt: false,
       ),
     ),
@@ -117,7 +120,16 @@ final _guided = find.byKey(const ValueKey('guided-plot'));
 final _mergePreview = find.byKey(const ValueKey('merge-preview'));
 final _placementPreview = find.byKey(const ValueKey('placement-preview'));
 
-Future<void> _finishCardWithPlay(WidgetTester tester) async {
+/// A first run starts the guided merge on its own (feature-instant-first-run);
+/// this only lets it settle.
+Future<void> _startFirstRun(WidgetTester tester) async {
+  await tester.pump();
+}
+
+/// Opens the How to play card with `?` and walks it to Play.
+Future<void> _helpThroughPlay(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('How to play'));
+  await tester.pump();
   for (var i = 0; i < 2; i++) {
     await tester.tap(find.widgetWithText(FilledButton, 'Next'));
     await tester.pump();
@@ -142,7 +154,7 @@ void main() {
   ) async {
     final store = MemoryCampProgressStore();
     final s = await _pump(tester, tutorial: _TutorialStore(), store: store);
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
 
     final c = s.controller;
     expect(c.board[0], 1);
@@ -188,9 +200,8 @@ void main() {
 
     // Help during play never restarts the practice or resets the board.
     final before = c.toSnapshot();
-    await tester.tap(find.byTooltip('How to play'));
-    await tester.pump();
-    await _finishCardWithPlay(tester);
+    await _helpThroughPlay(tester);
+    expect(find.text('How to play'), findsNothing);
     expect(c.toSnapshot(), before);
     expect(_guided, findsNothing);
     await tester.pump(const Duration(seconds: 3));
@@ -204,7 +215,7 @@ void main() {
       tutorial: _TutorialStore(),
       store: MemoryCampProgressStore(),
     );
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
     expect(find.byKey(const ValueKey('keyboard-cursor')), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
@@ -217,15 +228,20 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('Skip practice and Skip on the card bypass the practice', (
+  testWidgets('a first run opens no card and Skip practice bypasses it', (
     tester,
   ) async {
-    var s = await _pump(
+    final tutorial = _TutorialStore();
+    final s = await _pump(
       tester,
-      tutorial: _TutorialStore(),
+      tutorial: tutorial,
       store: MemoryCampProgressStore(),
     );
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
+    // No how-to-play card: the guided merge is up and the flag is stored.
+    expect(find.widgetWithText(FilledButton, 'Next'), findsNothing);
+    expect(_guided, findsOneWidget);
+    expect(tutorial.seen, isTrue);
     await tester.tap(find.text('Skip practice'));
     await tester.pump();
     expect(s.controller.occupiedCount, 0);
@@ -234,17 +250,6 @@ void main() {
     await tester.tap(_cell(9));
     await tester.pump();
     expect(s.controller.placements, 1);
-
-    s = await _pump(
-      tester,
-      tutorial: _TutorialStore(),
-      store: MemoryCampProgressStore(),
-    );
-    await tester.tap(find.text('Skip'));
-    await tester.pump();
-    expect(s.controller.occupiedCount, 0);
-    expect(_guided, findsNothing);
-    expect(_kinds(s.missions), _starterKinds);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -260,7 +265,7 @@ void main() {
         tutorial: _TutorialStore(),
         store: MemoryCampProgressStore(),
       );
-      await _finishCardWithPlay(tester);
+      await _startFirstRun(tester);
       expect(_guided, findsOneWidget);
       await tester.sendKeyEvent(key);
       await tester.pump();
@@ -271,38 +276,70 @@ void main() {
     }
   });
 
-  testWidgets('closing the card before progress loads keeps the first run', (
+  testWidgets('a slow progress load still starts the first run', (
     tester,
   ) async {
-    // Play before the load: practice and starter missions start on arrival.
-    var store = _GatedStore();
-    var s = await _pump(tester, tutorial: _TutorialStore(), store: store);
-    await _finishCardWithPlay(tester);
+    // Practice and starter missions start once the progress arrives.
+    final store = _GatedStore();
+    final platform = _EventsPlatform();
+    final s = await _pump(
+      tester,
+      tutorial: _TutorialStore(),
+      store: store,
+      platform: platform,
+    );
+    await _startFirstRun(tester);
     expect(s.controller.occupiedCount, 0);
+    // Input waits for the load.
+    await tester.tap(find.byType(GridView), warnIfMissed: false);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(s.controller.occupiedCount, 0);
+    expect(platform.events, isEmpty);
     store.gate.complete();
     await tester.pump();
     await tester.pump();
     expect(_guided, findsOneWidget);
+    expect(platform.events, ['start']);
     expect(_kinds(s.missions), _starterKinds);
     await tester.tap(_cell(2));
     await tester.pump();
     expect(s.missions.completedThisRun, 1);
     expect(s.controller.trailAxes, 2);
     await tester.pump(const Duration(seconds: 3));
-
-    // Skip before the load: no practice, but still the starter missions.
-    store = _GatedStore();
-    s = await _pump(tester, tutorial: _TutorialStore(), store: store);
-    await tester.tap(find.text('Skip'));
-    await tester.pump();
-    store.gate.complete();
-    await tester.pump();
-    await tester.pump();
-    expect(_guided, findsNothing);
-    expect(s.controller.occupiedCount, 0);
-    expect(_kinds(s.missions), _starterKinds);
-    await tester.pump(const Duration(seconds: 3));
   });
+
+  for (final close in const ['Escape', 'Skip', 'Play']) {
+    testWidgets('help during the practice ($close) keeps the practice', (
+      tester,
+    ) async {
+      final store = MemoryCampProgressStore();
+      final s = await _pump(tester, tutorial: _TutorialStore(), store: store);
+      await _startFirstRun(tester);
+      expect(_guided, findsOneWidget);
+      final before = s.controller.toSnapshot();
+      switch (close) {
+        case 'Escape':
+          await tester.tap(find.byTooltip('How to play'));
+          await tester.pump();
+          await tester.pump();
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pump();
+        case 'Skip':
+          await tester.tap(find.byTooltip('How to play'));
+          await tester.pump();
+          await tester.tap(find.text('Skip'));
+          await tester.pump();
+        default:
+          await _helpThroughPlay(tester);
+      }
+      expect(find.text('How to play'), findsNothing);
+      expect(_guided, findsOneWidget);
+      expect(s.controller.toSnapshot(), before);
+      expect(store.value.activeRun?['guidedPractice'], isTrue);
+      await tester.pump(const Duration(seconds: 3));
+    });
+  }
 
   testWidgets('returning players get no practice and random missions', (
     tester,
@@ -325,7 +362,7 @@ void main() {
     final store = MemoryCampProgressStore();
     final tutorial = _TutorialStore();
     await _pump(tester, tutorial: tutorial, store: store);
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
     expect(tutorial.seen, isTrue);
 
     final s = await _pump(tester, tutorial: tutorial, store: store, seed: 9);
@@ -345,7 +382,7 @@ void main() {
     final store = MemoryCampProgressStore();
     final tutorial = _TutorialStore();
     var s = await _pump(tester, tutorial: tutorial, store: store);
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
     await tester.tap(_cell(2)); // practice merge, first mission
     await tester.pump();
     for (final cell in const [8, 11, 13]) {
@@ -495,7 +532,7 @@ void main() {
       tutorial: _TutorialStore(),
       store: const _ThrowingProgressStore(),
     );
-    await _finishCardWithPlay(tester);
+    await _startFirstRun(tester);
     expect(_guided, findsOneWidget);
     await tester.tap(_cell(2));
     await tester.pump();
@@ -576,7 +613,7 @@ void main() {
         size: size,
       );
       expect(tester.takeException(), isNull);
-      await _finishCardWithPlay(tester);
+      await _startFirstRun(tester);
       expect(tester.takeException(), isNull);
       expect(_guided, findsOneWidget);
       final skip = tester.getRect(find.text('Skip practice'));
@@ -587,4 +624,26 @@ void main() {
       expect(grid.right, lessThanOrEqualTo(size.width));
     });
   }
+}
+
+class _EventsPlatform extends GamePlatform {
+  final List<String> events = <String>[];
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  void gameplayStart() => events.add('start');
+
+  @override
+  void gameplayStop() => events.add('stop');
+
+  @override
+  Future<void> showRunBreakAd() async {}
+
+  @override
+  bool get isAudioMuted => false;
+
+  @override
+  bool get allowsResultRegistration => false;
 }

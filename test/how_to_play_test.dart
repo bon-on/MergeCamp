@@ -31,6 +31,7 @@ Future<MergeCampController> _pump(
   HowToPlayStore store, {
   Size size = const Size(390, 844),
   GamePlatform platform = const NoopGamePlatform(),
+  bool openCard = false,
 }) async {
   for (final channel in const [
     MethodChannel('merge_camp/audio'),
@@ -64,9 +65,16 @@ Future<MergeCampController> _pump(
     ),
   );
   await tester.pump();
+  if (openCard) {
+    // The card only opens from `?` now (feature-instant-first-run).
+    await tester.pump();
+    await tester.tap(find.byTooltip('How to play'));
+    await tester.pump();
+  }
   return controller;
 }
 
+final _guidedCaption = find.text('Tap the glowing plot to merge!');
 final _nextBtn = find.widgetWithText(FilledButton, 'Next');
 final _playBtn = find.widgetWithText(FilledButton, 'Play');
 final _title = find.text('How to play');
@@ -75,10 +83,26 @@ final _cursor = find.byKey(const ValueKey('keyboard-cursor'));
 int _filled(MergeCampController c) => c.board.where((t) => t != null).length;
 
 void main() {
-  testWidgets('first launch shows the overlay and blocks game input', (
+  testWidgets('first launch skips the card and starts the guided merge', (
     tester,
   ) async {
-    final controller = await _pump(tester, _FakeStore());
+    final store = _FakeStore();
+    final platform = _RecordingPlatform();
+    await _pump(tester, store, platform: platform);
+    await tester.pump();
+    expect(_title, findsNothing);
+    expect(_guidedCaption, findsOneWidget);
+    expect(store.seen, isTrue);
+    expect(store.writes, 1);
+    expect(platform.events, ['start']);
+  });
+
+  testWidgets('the card blocks game input while it is open', (tester) async {
+    final controller = await _pump(
+      tester,
+      _FakeStore(seen: true),
+      openCard: true,
+    );
     expect(_title, findsOneWidget);
     expect(find.text('Skip'), findsOneWidget);
     expect(_nextBtn, findsOneWidget);
@@ -98,8 +122,8 @@ void main() {
   testWidgets('Next walks the steps; Play closes and stores the flag', (
     tester,
   ) async {
-    final store = _FakeStore();
-    await _pump(tester, store);
+    final store = _FakeStore(seen: true);
+    await _pump(tester, store, openCard: true);
     for (var i = 0; i < 2; i++) {
       expect(_nextBtn, findsOneWidget);
       await tester.tap(_nextBtn);
@@ -114,8 +138,8 @@ void main() {
   });
 
   testWidgets('Skip closes and stores the flag', (tester) async {
-    final store = _FakeStore();
-    await _pump(tester, store);
+    final store = _FakeStore(seen: true);
+    await _pump(tester, store, openCard: true);
     await tester.tap(find.text('Skip'));
     await tester.pump();
     expect(_title, findsNothing);
@@ -123,8 +147,8 @@ void main() {
   });
 
   testWidgets('Escape skips; Enter/Space and arrows navigate', (tester) async {
-    final store = _FakeStore();
-    final controller = await _pump(tester, store);
+    final store = _FakeStore(seen: true);
+    final controller = await _pump(tester, store, openCard: true);
     final text = find.byKey(const ValueKey('how-to-play-text'));
     final first = tester.widget<Text>(text).data;
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -181,21 +205,21 @@ void main() {
 
   testWidgets('storage failures do not break play', (tester) async {
     await _pump(tester, const _ThrowingStore());
-    expect(_title, findsOneWidget);
+    await tester.pump();
+    expect(_title, findsNothing);
+    expect(_guidedCaption, findsOneWidget);
+    await tester.tap(find.byTooltip('How to play'));
+    await tester.pump();
     await tester.tap(find.text('Skip'));
     await tester.pump();
     expect(_title, findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('gameplayStart fires only after the first-run tutorial closes', (
-    tester,
-  ) async {
+  testWidgets('gameplayStart waits for the first-run check', (tester) async {
     final platform = _RecordingPlatform();
-    await _pump(tester, _FakeStore(), platform: platform);
+    await _pump(tester, _PendingStore(), platform: platform);
     expect(platform.events, isEmpty);
-    await tester.tap(find.text('Skip'));
-    await tester.pump();
-    expect(platform.events, ['start']);
   });
 
   testWidgets('? stops gameplay and closing restarts it without doubles', (
@@ -227,7 +251,11 @@ void main() {
   testWidgets('holding Enter on Play does not place a tile after close', (
     tester,
   ) async {
-    final controller = await _pump(tester, _FakeStore());
+    final controller = await _pump(
+      tester,
+      _FakeStore(seen: true),
+      openCard: true,
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
@@ -242,7 +270,7 @@ void main() {
     }
     await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(seconds: 1));
-    expect(_filled(controller), 2);
+    expect(_filled(controller), 0);
     expect(controller.placements, 0);
   });
 
@@ -259,7 +287,7 @@ void main() {
   testWidgets('F5 and shortcuts stay unhandled while the card has focus', (
     tester,
   ) async {
-    await _pump(tester, _FakeStore());
+    await _pump(tester, _FakeStore(seen: true), openCard: true);
     await tester.pump();
     expect(
       FocusManager.instance.primaryFocus?.toString(),
@@ -275,7 +303,7 @@ void main() {
   testWidgets('Tab stays inside the card and Escape still closes it', (
     tester,
   ) async {
-    await _pump(tester, _FakeStore());
+    await _pump(tester, _FakeStore(seen: true), openCard: true);
     await tester.pump();
     for (var i = 0; i < 4; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -294,7 +322,7 @@ void main() {
 
   for (final size in const [Size(390, 844), Size(844, 390), Size(1280, 720)]) {
     testWidgets('overlay fits without overflow at $size', (tester) async {
-      await _pump(tester, _FakeStore(), size: size);
+      await _pump(tester, _FakeStore(seen: true), size: size, openCard: true);
       expect(_title, findsOneWidget);
       expect(tester.takeException(), isNull);
     });

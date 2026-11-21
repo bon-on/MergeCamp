@@ -101,12 +101,9 @@ Finder _cell(int index) => find
     )
     .at(index);
 
-Future<void> _finishCardWithPlay(WidgetTester tester) async {
-  for (var i = 0; i < 2; i++) {
-    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
-    await tester.pump();
-  }
-  await tester.tap(find.widgetWithText(FilledButton, 'Play'));
+/// A first run starts the guided merge on its own (feature-instant-first-run);
+/// this only lets it settle.
+Future<void> _startFirstRun(WidgetTester tester) async {
   await tester.pump();
 }
 
@@ -343,7 +340,7 @@ void main() {
       final store = MemoryCampProgressStore();
       final tutorial = _TutorialStore();
       var s = await _pump(tester, tutorial: tutorial, store: store);
-      await _finishCardWithPlay(tester);
+      await _startFirstRun(tester);
       expect(store.value.stickerSlots.at(0), 'pennant');
 
       // Guided first merge: welcome bonus and the first starter mission.
