@@ -39,9 +39,12 @@ for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     const test = tests[event.testID] || {};
     const url = (test.root_url || test.url || '').replace(/^.*\/test\//, 'test/');
     const title = `${url} | ${test.name || 'unknown test'}`.slice(0, 250);
-    const message = (errors[event.testID] || ['(no error text)'])
+    const message = [
+      ...(prints[event.testID] || []),
+      ...(errors[event.testID] || []),
+    ]
       .join('\n')
-      .slice(0, 4000);
+      .slice(0, 6000);
     console.log(`::error title=${escapeProperty(title)}::${escape(message)}`);
   }
 }
