@@ -19,6 +19,7 @@ import '../meta/stickers.dart';
 import '../platform/game_platform.dart';
 import 'feedback_fx.dart';
 import 'how_to_play.dart';
+import 'tool_hints.dart';
 import 'merge_camp_controller.dart';
 import 'share/result_share.dart';
 import 'ui/album_overlay.dart';
@@ -40,6 +41,7 @@ class MergeCampScreen extends StatefulWidget {
     this.platform = const NoopGamePlatform(),
     this.controller,
     this.howToPlayStore = const HowToPlayStore(),
+    this.toolHintStore = const ToolHintStore(),
     this.soundMuteStore = const SoundMuteStore(),
     this.progressStore = const CampProgressStore(),
     this.missions,
@@ -56,6 +58,9 @@ class MergeCampScreen extends StatefulWidget {
 
   /// First-run tutorial flag storage; tests inject a fake.
   final HowToPlayStore howToPlayStore;
+
+  /// One-time tool hint flags; tests inject a fake.
+  final ToolHintStore toolHintStore;
 
   /// Persisted user mute choice; tests inject a fake.
   final SoundMuteStore soundMuteStore;
@@ -134,6 +139,12 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _guidedPractice = false;
   // Next-step hint after the practice merge; ends after a few placements.
   bool _coachActive = false;
+
+  // One-time Shift / Trail Axe hints (feature-tool-hints). Until the saved
+  // flags are read every hint counts as seen.
+  Set<ToolHint> _hintsSeen = {...ToolHint.values};
+  ToolHint? _toolHint;
+  int _toolHintPlacement = 0;
   // Play was chosen on the first-run card before stored progress arrived.
   bool _practiceRequested = false;
   bool _restoringRun = false;
@@ -191,6 +202,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   void initState() {
     super.initState();
     unawaited(_checkTutorial());
+    unawaited(_loadToolHints());
     _feedback = FeedbackFx(
       isMuted: () => _soundMuted || widget.platform.isAudioMuted,
     );
@@ -206,6 +218,42 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     // Portal mute settings and ads can change the platform mute at any time.
     widget.platform.setAudioMuteListener(_feedback.refreshMute);
+  }
+
+  Future<void> _loadToolHints() async {
+    final seen = await widget.toolHintStore.loadSeen();
+    if (mounted) _hintsSeen = seen;
+  }
+
+  /// Shows, keeps or drops the one-time tool hint after a change.
+  void _updateToolHint() {
+    final current = _toolHint;
+    if (current != null &&
+        (_controller.isGameOver ||
+            _controller.placements == 0 ||
+            _controller.placements - _toolHintPlacement >= 4)) {
+      _toolHint = null;
+    }
+    if (_toolHint != null ||
+        _guidedPractice ||
+        _coachActive ||
+        _controller.isGameOver ||
+        _controller.placements == 0) {
+      return;
+    }
+    ToolHint? next;
+    if (_controller.shifts > 0 && !_hintsSeen.contains(ToolHint.shift)) {
+      next = ToolHint.shift;
+    } else if (_controller.trailAxes > 0 &&
+        _controller.occupiedCount >= dangerOccupied &&
+        !_hintsSeen.contains(ToolHint.axe)) {
+      next = ToolHint.axe;
+    }
+    if (next == null) return;
+    _toolHint = next;
+    _toolHintPlacement = _controller.placements;
+    _hintsSeen = {..._hintsSeen, next};
+    unawaited(widget.toolHintStore.markSeen(next));
   }
 
   void _onAppLifecycleChanged(AppLifecycleState state) {
@@ -581,6 +629,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         }
         _afterPlacement();
       }
+      _updateToolHint();
 
       final danger = _controller.occupiedCount >= dangerOccupied;
       if (danger && !_wasDanger && placed && _effectsOn) _shakeSerial += 1;
@@ -1227,6 +1276,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       final result = useAxe
           ? _controller.useTrailAxe(index)
           : _controller.place(index);
+      if (useAxe && result.action == MergeAction.removed) {
+        _toolHint = _toolHint == ToolHint.axe ? null : _toolHint;
+      }
       if (result.action == MergeAction.removed && mounted) {
         if (_effectsOn && tierBefore != null) {
           _fx.addRemoval(index, tierBefore);
@@ -1313,6 +1365,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       final result = _controller.useShift(from, direction);
       switch (result.action) {
         case MergeAction.shifted:
+          if (_toolHint == ToolHint.shift) _toolHint = null;
           setState(() => _shiftMode = false);
           _afterShift();
           final chain = _controller.lastMergeChain;
@@ -1423,6 +1476,9 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                             coachHint: _coachActive && !_controller.isGameOver
                                 ? 'Nice! Keep placing tiles - 3 touching matches merge.'
                                 : null,
+                            toolHint: _shiftMode || _trailAxeMode
+                                ? null
+                                : _toolHint?.text,
                             trailAxeMode: _trailAxeMode,
                             shiftMode: _shiftMode,
                             shiftFrom: _shiftFrom,

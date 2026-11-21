@@ -33,6 +33,7 @@ class CampHudLayout extends StatelessWidget {
     this.guidedIndex,
     this.onSkipPractice,
     this.coachHint,
+    this.toolHint,
     required this.trailAxeMode,
     required this.shiftMode,
     required this.shiftFrom,
@@ -71,6 +72,9 @@ class CampHudLayout extends StatelessWidget {
 
   /// One-line next step shown on the board right after the practice merge.
   final String? coachHint;
+
+  /// One-time Shift / Trail Axe hint (feature-tool-hints).
+  final String? toolHint;
   final bool trailAxeMode;
 
   /// Shift is armed: the board waits for a camp to pick.
@@ -204,7 +208,9 @@ class CampHudLayout extends StatelessWidget {
             onSkip: onSkipPractice,
           )
         else if (coachHint != null)
-          _captionBar(palette, coachHint!, key: const ValueKey('coach-hint')),
+          _captionBar(palette, coachHint!, key: const ValueKey('coach-hint'))
+        else if (toolHint != null)
+          _captionBar(palette, toolHint!, key: const ValueKey('tool-hint')),
         if (chainLength >= 2)
           Positioned.fill(
             child: ChainBanner(
@@ -218,7 +224,8 @@ class CampHudLayout extends StatelessWidget {
           Positioned(
             left: 8,
             right: 8,
-            bottom: 8,
+            // Above the one-time tool hint bar when it is up.
+            bottom: toolHint != null ? 52 : 8,
             child: _toastColumn(palette),
           ),
       ],
