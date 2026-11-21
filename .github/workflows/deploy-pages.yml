@@ -32,7 +32,11 @@ jobs:
         run: flutter pub get
 
       - name: Run tests
-        run: flutter test --reporter github
+        run: flutter test --file-reporter json:test-results.json
+
+      - name: Annotate failing tests
+        if: failure()
+        run: node tool/annotate_test_failures.js test-results.json
 
       - name: Build web app
         run: flutter build web --release --base-href /MergeCamp/
