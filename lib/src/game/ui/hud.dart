@@ -737,3 +737,60 @@ class _MissionChip extends StatelessWidget {
     );
   }
 }
+
+/// One slim line with the camp the player is building towards and a progress
+/// bar (feature-run-goal).
+class RunGoalLine extends StatelessWidget {
+  const RunGoalLine({
+    super.key,
+    required this.palette,
+    required this.label,
+    required this.progress,
+  });
+
+  final CampPalette palette;
+  final String label;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.flag_rounded, size: 16, color: palette.accent),
+        const SizedBox(width: 6),
+        Expanded(
+          flex: 5,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Align(
+              key: ValueKey(label),
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 3,
+          child: CampProgressBar(
+            key: const ValueKey('run-goal-bar'),
+            palette: palette,
+            value: progress,
+            height: 7,
+          ),
+        ),
+      ],
+    );
+  }
+}

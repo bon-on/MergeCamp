@@ -187,9 +187,15 @@ class MergeCampController extends ChangeNotifier {
 
   bool get canUseTrailAxe => _trailAxes > 0 && !_isGameOver;
   int get currentTierCap => min(5, 2 + (_placements ~/ 8));
-  int get goalTargetTier => min(6, 4 + (_placements ~/ 18));
-  String get goalLabel => 'Raise a ${campTierName(goalTargetTier)} camp';
-  double get goalProgress => (highestTier / goalTargetTier).clamp(0, 1);
+
+  /// The camp tier the player is climbing towards: one above the best camp,
+  /// at least a Scout Cabin (feature-run-goal). It only moves when the
+  /// player builds a new best camp, so its bar never goes backwards.
+  int get goalTier => min(maxCampTier, max(4, _highestTier + 1));
+  String get goalLabel => _highestTier >= maxCampTier
+      ? '${campTierName(maxCampTier)} built!'
+      : 'Build a ${campTierName(goalTier)}';
+  double get goalProgress => (_highestTier / goalTier).clamp(0.0, 1.0);
   String get pressureLabel {
     if (_placements < 12) return 'Warm';
     if (_placements < 24) return 'Busy';

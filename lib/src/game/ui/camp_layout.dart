@@ -18,6 +18,13 @@ import 'hud.dart';
 /// Board 13+ cells full: danger glow.
 const int dangerOccupied = 13;
 
+/// Narrow layouts show the in-run goal line only when the board stays at
+/// least this big with it in place (feature-run-goal).
+const double _narrowGoalMinBoard = 200;
+
+/// Height the narrow goal line takes from the board area (line + gap).
+const double _narrowGoalHeight = 24;
+
 /// Screen layout without game logic: wide (board centered between two side
 /// panels) or narrow (stacked, phone portrait). All state comes in from
 /// the screen, all actions go out through callbacks.
@@ -119,6 +126,17 @@ class CampHudLayout extends StatelessWidget {
       builder: (context, constraints) => isWide(constraints)
           ? _buildWide(constraints, palette, loopingArt)
           : _buildNarrow(constraints, palette, loopingArt),
+    );
+  }
+
+  /// The in-run goal line (feature-run-goal); none in guided practice.
+  Widget? _goalLine(CampPalette palette) {
+    if (guidedIndex != null) return null;
+    return RunGoalLine(
+      key: const ValueKey('run-goal'),
+      palette: palette,
+      label: controller.goalLabel,
+      progress: controller.goalProgress,
     );
   }
 
@@ -409,6 +427,14 @@ class CampHudLayout extends StatelessWidget {
           palette: palette,
           child: CampLevelCard(palette: palette, progress: progress),
         ),
+        if (_goalLine(palette) case final goal?) ...[
+          const SizedBox(height: 12),
+          CampPanel(
+            palette: palette,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: goal,
+          ),
+        ],
         const SizedBox(height: 12),
         MissionsPanel(
           palette: palette,
@@ -737,11 +763,22 @@ class CampHudLayout extends StatelessWidget {
               // Sticker lanes above and below the board; the side lanes
               // only when the board leaves room for them.
               final wantedLane = (area.maxWidth * 0.1).clamp(24.0, 44.0);
+              final boardRoom =
+                  area.maxHeight - stripHeight - 10 - wantedLane * 2;
+              // The goal line only when the board stays big enough with it;
+              // short windows (landscape phones) keep the board instead. The
+              // row stays reserved (empty) in guided practice so the board
+              // does not jump when practice ends.
+              final goal =
+                  math.min(area.maxWidth, boardRoom - _narrowGoalHeight) >=
+                      _narrowGoalMinBoard
+                  ? (_goalLine(palette) ?? const SizedBox.shrink())
+                  : null;
               final boardSide = math.max(
                 120.0,
                 math.min(
                   area.maxWidth,
-                  area.maxHeight - stripHeight - 10 - wantedLane * 2,
+                  boardRoom - (goal != null ? _narrowGoalHeight : 0),
                 ),
               );
               // Short windows: narrower lanes so five stickers fit a row.
@@ -749,6 +786,10 @@ class CampHudLayout extends StatelessWidget {
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  if (goal != null) ...[
+                    SizedBox(height: _narrowGoalHeight - 6, child: goal),
+                    const SizedBox(height: 6),
+                  ],
                   _StickerFrame(
                     slots: progress.stickerSlots,
                     board: boardSide,
