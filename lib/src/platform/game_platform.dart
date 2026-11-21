@@ -21,6 +21,13 @@ abstract class GamePlatform {
   /// unavailable, so callers can always continue afterwards.
   Future<void> showRunBreakAd();
 
+  /// Whether [showRewardedAd] can ever pay out (feature-second-wind).
+  bool get supportsRewardedAds => false;
+
+  /// Shows a rewarded ad. Completes true only when the player watched it to
+  /// the end; false on skip, error, no fill or timeout.
+  Future<bool> showRewardedAd() async => false;
+
   bool get isAudioMuted;
 
   /// Registers a callback for when [isAudioMuted] may have changed (portal

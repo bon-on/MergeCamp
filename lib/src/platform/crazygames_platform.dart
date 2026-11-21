@@ -116,40 +116,56 @@ class CrazyGamesPlatform extends GamePlatform {
   void gameplayStop() => _call((sdk) => sdk.game.gameplayStop());
 
   @override
-  Future<void> showRunBreakAd() {
+  Future<void> showRunBreakAd() => _requestAd('midgame').then((_) {});
+
+  @override
+  bool get supportsRewardedAds => _sdk != null;
+
+  @override
+  Future<bool> showRewardedAd() => _requestAd('rewarded');
+
+  /// Runs one SDK ad. True only when `adFinished` fired; an error, a missing
+  /// SDK or the timeout complete with false so callers always continue.
+  Future<bool> _requestAd(String adType) {
     final sdk = _sdk;
     if (sdk == null) {
-      return Future<void>.value();
+      return Future<bool>.value(false);
     }
 
-    final completer = Completer<void>();
-    void finish() {
+    final completer = Completer<bool>();
+    void finish(bool watched) {
       _setAdPlaying(false);
       if (!completer.isCompleted) {
-        completer.complete();
+        completer.complete(watched);
       }
     }
 
     try {
       sdk.ad.requestAd(
-        'midgame',
+        adType,
         _AdCallbacks(
           adStarted: (() => _setAdPlaying(true)).toJS,
-          adFinished: finish.toJS,
+          adFinished: (() => finish(true)).toJS,
           adError: ((JSAny? error) {
-            debugPrint('CrazyGames midgame ad error: ${error?.dartify()}');
-            finish();
+            debugPrint('CrazyGames $adType ad error: ${error?.dartify()}');
+            finish(false);
           }).toJS,
         ),
       );
     } catch (error) {
       debugPrint('CrazyGames requestAd failed: $error');
-      finish();
+      finish(false);
     }
 
     // Safety net if the SDK never calls back: resume play rather than lock the
     // board. A late adStarted would set _adPlaying again until adFinished.
-    return completer.future.timeout(_adTimeout, onTimeout: finish);
+    return completer.future.timeout(
+      _adTimeout,
+      onTimeout: () {
+        finish(false);
+        return false;
+      },
+    );
   }
 
   @override

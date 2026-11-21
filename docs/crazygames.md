@@ -44,6 +44,7 @@ cd build && python3 -m http.server 8765
 | 첫 프레임 | `game.gameplayStart()` |
 | 보드가 막혀 게임 오버 | `game.gameplayStop()` |
 | 게임 오버 후 Restart | `ad.requestAd('midgame')`, 광고가 끝나거나 실패하면 새 판 시작 + `gameplayStart()` |
+| 20번 이상 놓은 판이 막힘 | Second Wind 카드(`ad.requestAd('rewarded')`). `adFinished`일 때만 낮은 캠프 6개를 치우고 이어서 한다. 오류/건너뜀이면 보상 없음. 판은 카드에서 고를 때까지 정산하지 않는다(`feature-second-wind`) |
 | 광고 재생 중, `settings.muteAudio` | 효과음 끔 |
 | 게임 오버 | Bon-on 리더보드 등록 안내를 띄우지 않음 (Pages/모바일에서는 띄움) |
 
@@ -59,7 +60,7 @@ cd build && python3 -m http.server 8765
 ## 알려진 제한
 
 - 키보드 조작은 없다. 클릭/탭만으로 전체 플레이가 가능하다.
-- 보상형 광고와 배너는 아직 쓰지 않는다.
+- 보상형 광고는 Second Wind(판당 1번)에만 쓰고, 배너는 쓰지 않는다.
 - 진행도는 SDK Data 모듈에 저장한다(`feature-crazygames-cloud-save`). 업로드할 때 제출 화면의 **Progress Save**에서
   "Yes, using the Data Module from the CrazyGames SDK"를 반드시 선택한다. 선택하지 않으면 Data 모듈이 꺼져 있어
   브라우저 localStorage에만 저장된다.

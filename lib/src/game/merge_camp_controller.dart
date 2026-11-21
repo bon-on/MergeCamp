@@ -70,6 +70,12 @@ class MergeCampController extends ChangeNotifier {
   /// Shift (step one camp one cell) holds two charges at most.
   static const int maxShifts = 2;
 
+  /// Camps a Second Wind clears, lowest tier first (feature-second-wind).
+  static const int secondWindClears = 6;
+
+  /// Placements a run needs before a Second Wind may be offered.
+  static const int secondWindMinPlacements = 20;
+
   /// A single placement merging this many tiles at once earns a Shift.
   static const int bigShiftCluster = 4;
 
@@ -110,6 +116,7 @@ class MergeCampController extends ChangeNotifier {
   int _lastMergeChain = 0;
   int _bestMergeChain = 0;
   bool _isGameOver = false;
+  bool _revived = false;
   int _mergeCount = 0;
   int? _lastPlacedIndex;
   List<MergeStep> _lastMergeSteps = const <MergeStep>[];
@@ -145,6 +152,39 @@ class MergeCampController extends ChangeNotifier {
   int get lastMergeChain => _lastMergeChain;
   int get bestMergeChain => _bestMergeChain;
   bool get isGameOver => _isGameOver;
+
+  /// Whether this run already used its Second Wind.
+  bool get revived => _revived;
+
+  /// A locked board in a long enough run that has not been revived yet.
+  bool get canRevive =>
+      _isGameOver && !_revived && _placements >= secondWindMinPlacements;
+
+  /// Second Wind: clears the [secondWindClears] lowest-tier camps (ties:
+  /// lowest cell first) and puts the run back in play. Score, placements,
+  /// tools and the piece order stay as they are. Returns false if not allowed.
+  bool revive() {
+    if (!canRevive) return false;
+    final cells =
+        <int>[
+          for (var i = 0; i < cellCount; i++)
+            if (_board[i] != null) i,
+        ]..sort((a, b) {
+          final byTier = _board[a]!.compareTo(_board[b]!);
+          return byTier != 0 ? byTier : a.compareTo(b);
+        });
+    for (final cell in cells.take(secondWindClears)) {
+      _board[cell] = null;
+    }
+    _revived = true;
+    _isGameOver = false;
+    _lastMergeChain = 0;
+    _lastMergeSteps = const <MergeStep>[];
+    _lastPlacedIndex = null;
+    notifyListeners();
+    return true;
+  }
+
   bool get canUseTrailAxe => _trailAxes > 0 && !_isGameOver;
   int get currentTierCap => min(5, 2 + (_placements ~/ 8));
   int get goalTargetTier => min(6, 4 + (_placements ~/ 18));
@@ -197,6 +237,7 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = false;
+    _revived = false;
     _mergeCount = 0;
     _lastPlacedIndex = null;
     _lastMergeSteps = const <MergeStep>[];
@@ -242,6 +283,7 @@ class MergeCampController extends ChangeNotifier {
     'bestMergeChain': _bestMergeChain,
     'mergeCount': _mergeCount,
     'isGameOver': _isGameOver,
+    if (_revived) 'revived': true,
     if (_dailyDay != null) 'daily': {'day': _dailyDay, 'draws': _draws},
   };
 
@@ -267,7 +309,8 @@ class MergeCampController extends ChangeNotifier {
         !integer(data['lastMergeChain'], 0, 7) ||
         !integer(data['bestMergeChain'], 0, 7) ||
         !integer(data['mergeCount'], 0, 7000000) ||
-        data['isGameOver'] is! bool) {
+        data['isGameOver'] is! bool ||
+        (data.containsKey('revived') && data['revived'] is! bool)) {
       return false;
     }
     final highest = data['highestTier'] as int;
@@ -343,6 +386,7 @@ class MergeCampController extends ChangeNotifier {
     _bestMergeChain = bestChain;
     _mergeCount = merges;
     _isGameOver = terminal;
+    _revived = data['revived'] == true;
     _lastPlacedIndex = null;
     _lastMergeSteps = const <MergeStep>[];
     notifyListeners();
@@ -600,6 +644,7 @@ class MergeCampController extends ChangeNotifier {
     List<int>? previewTiers,
     bool isGameOver = false,
     int mergeCount = 0,
+    bool revived = false,
   }) {
     _board = List<int?>.from(board);
     _previewTiers
@@ -617,6 +662,7 @@ class MergeCampController extends ChangeNotifier {
     _lastMergeChain = 0;
     _bestMergeChain = 0;
     _isGameOver = isGameOver;
+    _revived = revived;
     _mergeCount = mergeCount;
     _lastPlacedIndex = null;
     _lastMergeSteps = const <MergeStep>[];

@@ -151,6 +151,43 @@ void main() {
     expect(platform.isAudioMuted, isFalse);
   });
 
+  test('rewarded ad pays out only when it finishes', () async {
+    late JSObject callbacks;
+    final sdk = _FakeSdk(onRequestAd: (value) => callbacks = value);
+    final platform = CrazyGamesPlatform();
+    await platform.initialize();
+    expect(platform.supportsRewardedAds, isTrue);
+
+    final ad = platform.showRewardedAd();
+    expect(sdk.calls, <String>['requestAd:rewarded']);
+    callbacks.callMethod('adStarted'.toJS);
+    expect(platform.isAudioMuted, isTrue);
+    callbacks.callMethod('adFinished'.toJS);
+    expect(await ad, isTrue);
+    expect(platform.isAudioMuted, isFalse);
+  });
+
+  test('rewarded ad error gives no reward', () async {
+    _FakeSdk(
+      onRequestAd: (callbacks) => callbacks.callMethod(
+        'adError'.toJS,
+        JSObject()..setProperty('code'.toJS, 'unfilled'.toJS),
+      ),
+    );
+    final platform = CrazyGamesPlatform();
+    await platform.initialize();
+
+    expect(await platform.showRewardedAd(), isFalse);
+    expect(platform.isAudioMuted, isFalse);
+  });
+
+  test('without the SDK there is no rewarded ad', () async {
+    final platform = CrazyGamesPlatform();
+    await platform.initialize();
+    expect(platform.supportsRewardedAds, isFalse);
+    expect(await platform.showRewardedAd(), isFalse);
+  });
+
   test('muteAudio setting mutes game audio', () async {
     final sdk = _FakeSdk();
     final platform = CrazyGamesPlatform();

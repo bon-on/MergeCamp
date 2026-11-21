@@ -11,6 +11,7 @@ related_specs:
   - feature-mobile-perf
   - feature-camp-stickers
   - feature-next-goal-share
+  - feature-second-wind
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md
@@ -26,12 +27,13 @@ evidence_files:
 
 - `GamePlatform` 인터페이스, no-op 구현, CrazyGames `dart:js_interop` 어댑터.
 - 게임 화면의 gameplay 이벤트, 재시작 전 midgame 광고, 광고 중 입력/효과음 차단.
+- 보상형 광고는 `GamePlatform.showRewardedAd`를 통한 Second Wind(판당 1번, `feature-second-wind`)에만 쓴다. `adFinished`일 때만 보상한다.
 - 웹 효과음 재생과 데스크톱 레이아웃 폭 제한.
 - `tool/build_crazygames.sh`와 `docs/crazygames.md`.
 
 명시적으로 제외한다.
 
-- 보상형/배너 광고, 키보드 조작. (Data/User 모듈은 진행도 저장 용도로 `feature-crazygames-cloud-save`가 다룬다.)
+- 배너 광고와 Second Wind 밖의 보상형 광고, 키보드 조작. (Data/User 모듈은 진행도 저장 용도로 `feature-crazygames-cloud-save`가 다룬다.)
 - 게임 규칙, 난이도, 점수 변경.
 - 포털 업로드와 제출.
 

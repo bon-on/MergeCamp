@@ -27,6 +27,7 @@ import 'ui/board_fx.dart';
 import 'ui/camp_layout.dart';
 import 'ui/decor_overlay.dart';
 import 'ui/run_summary_overlay.dart';
+import 'ui/second_wind_overlay.dart';
 import '../../result_registration.dart';
 
 /// How a restart picks the next run.
@@ -111,6 +112,12 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   bool _handlingTap = false;
   bool _wasGameOver = false;
   bool _breakAdInProgress = false;
+
+  // Second Wind (feature-second-wind): a locked board waits for the player's
+  // choice before the run is settled.
+  bool _secondWindOffer = false;
+  bool _secondWindUnavailable = false;
+  final FocusNode _secondWindFocus = FocusNode(debugLabel: 'SecondWind');
   int _completedRuns = 0;
   // The tutorial blocks all game input while the first-run check is pending
   // (_tutorialLoading) and while the card is open (_showHowTo).
@@ -542,6 +549,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     _lifecycle.dispose();
     _focusNode.dispose();
     _playAgainFocus.dispose();
+    _secondWindFocus.dispose();
     _feedback.stopMusic();
     unawaited(_feedback.dispose());
     _fx.dispose();
@@ -582,20 +590,17 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       if (runEnded) {
         _trailAxeMode = false;
         _shiftMode = false;
-        _report = RunReport(
-          score: _controller.score,
-          highestTier: _controller.highestTier,
-          bestChain: _controller.bestMergeChain,
-          missionsCompleted: _missions.completedThisRun,
-          outcome: _applyRun(),
-          dailyDay: _controller.dailyDay,
-        );
-        _syncGameplay();
-        if (widget.platform.allowsResultRegistration) {
-          _offerResultRegistration();
-        }
-        if (widget.enableAds) {
-          _handleRunEndedAds();
+        if (widget.platform.supportsRewardedAds &&
+            _controller.canRevive &&
+            !_guidedPractice) {
+          _secondWindOffer = true;
+          _secondWindUnavailable = false;
+          _syncGameplay();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _secondWindOffer) _secondWindFocus.requestFocus();
+          });
+        } else {
+          _settleRunEnd();
         }
       }
       if (!_controller.isGameOver) _checkpointRun();
@@ -605,6 +610,65 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Settles a finished run: report, progress, result registration and the
+  /// ads that follow the run.
+  void _settleRunEnd() {
+    _report = RunReport(
+      score: _controller.score,
+      highestTier: _controller.highestTier,
+      bestChain: _controller.bestMergeChain,
+      missionsCompleted: _missions.completedThisRun,
+      outcome: _applyRun(),
+      dailyDay: _controller.dailyDay,
+    );
+    _syncGameplay();
+    if (widget.platform.allowsResultRegistration) {
+      _offerResultRegistration();
+    }
+    if (widget.enableAds) {
+      _handleRunEndedAds();
+    }
+  }
+
+  /// "Continue" on the Second Wind card: a finished rewarded ad clears the
+  /// lowest camps and resumes the run; anything else keeps the card.
+  Future<void> _continueSecondWind() async {
+    if (!_secondWindOffer || _breakAdInProgress) return;
+    setState(() {
+      _breakAdInProgress = true;
+      _secondWindUnavailable = false;
+    });
+    _feedback.stopMusic();
+    var watched = false;
+    try {
+      watched = await widget.platform.showRewardedAd();
+    } catch (error) {
+      debugPrint('Rewarded ad failed: $error');
+    } finally {
+      _resumeMusicAfterAd();
+    }
+    if (!mounted) return;
+    _breakAdInProgress = false;
+    if (watched && _controller.revive()) {
+      _secondWindOffer = false;
+      _toast('Second Wind! Camps cleared.', Icons.air_rounded);
+      _syncGameplay();
+      _focusNode.requestFocus();
+    } else {
+      _secondWindUnavailable = true;
+    }
+    setState(() {});
+  }
+
+  /// "End run" on the Second Wind card: settle the run as it stands.
+  void _endSecondWind() {
+    if (!_secondWindOffer || _breakAdInProgress) return;
+    setState(() {
+      _secondWindOffer = false;
+      _settleRunEnd();
+    });
   }
 
   /// Effects, missions and discoveries of the placement that just happened.
@@ -871,7 +935,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   }
 
   Future<void> _restartRun({_RunMode mode = _RunMode.same}) async {
-    if (_breakAdInProgress || _tutorialBlocking) {
+    if (_breakAdInProgress || _tutorialBlocking || _secondWindOffer) {
       return;
     }
     // Restarting the untouched practice board just skips the practice and
@@ -997,6 +1061,19 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         if (!isRepeat) _albumOpen ? _closeAlbum() : _closeDecor();
         return KeyEventResult.handled;
       }
+      return KeyEventResult.ignored;
+    }
+    if (_secondWindOffer) {
+      if (key == LogicalKeyboardKey.keyR || key == LogicalKeyboardKey.escape) {
+        if (!isRepeat) _endSecondWind();
+        return KeyEventResult.handled;
+      }
+      if (_isKey(key, activate) &&
+          FocusManager.instance.primaryFocus == _focusNode) {
+        if (!isRepeat) unawaited(_continueSecondWind());
+        return KeyEventResult.handled;
+      }
+      if (_isKey(key, activate) && isRepeat) return KeyEventResult.handled;
       return KeyEventResult.ignored;
     }
     if (_controller.isGameOver) {
@@ -1388,7 +1465,22 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                 // decides whether the how-to-play card opens.
                 if (_tutorialLoading || !_progressLoaded)
                   const Positioned.fill(child: AbsorbPointer()),
-                if (_controller.isGameOver)
+                if (_secondWindOffer)
+                  Positioned.fill(
+                    child: ExcludeFocus(
+                      excluding: _tutorialBlocking,
+                      child: SecondWindOverlay(
+                        theme: _theme,
+                        clears: MergeCampController.secondWindClears,
+                        busy: _breakAdInProgress,
+                        unavailable: _secondWindUnavailable,
+                        continueFocus: _secondWindFocus,
+                        onContinue: () => unawaited(_continueSecondWind()),
+                        onEnd: _endSecondWind,
+                      ),
+                    ),
+                  ),
+                if (_controller.isGameOver && !_secondWindOffer)
                   Positioned.fill(
                     child: ExcludeFocus(
                       excluding: _albumOpen || _decorOpen || _tutorialBlocking,
