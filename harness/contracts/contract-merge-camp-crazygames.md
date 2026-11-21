@@ -13,6 +13,7 @@ related_specs:
   - feature-next-goal-share
   - feature-second-wind
   - feature-instant-first-run
+  - feature-large-screen-scale
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md

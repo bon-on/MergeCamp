@@ -15,6 +15,7 @@ related_specs:
   - feature-merge-feel-timing
   - feature-instant-first-run
   - feature-second-wind
+  - feature-large-screen-scale
 ---
 
 # ADR: CrazyGames 배포에 빌드 플래그와 플랫폼 어댑터 사용

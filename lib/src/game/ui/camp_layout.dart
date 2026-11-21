@@ -18,6 +18,10 @@ import 'hud.dart';
 /// Board 13+ cells full: danger glow.
 const int dangerOccupied = 13;
 
+/// Scale of the wide layout's side panels for a window [height]: 1 up to
+/// 720 px, then growing with the height up to 1.5 (feature-large-screen-scale).
+double wideSideScaleFor(double height) => (height / 720).clamp(1.0, 1.5);
+
 /// Narrow layouts show the in-run goal line only when the board stays at
 /// least this big with it in place (feature-run-goal).
 const double _narrowGoalMinBoard = 200;
@@ -401,7 +405,11 @@ class CampHudLayout extends StatelessWidget {
     // A little extra room below the board so it never touches the bottom
     // edge (hub page, browser chrome).
     const bottomPad = 28.0;
-    final side = (c.maxWidth * 0.23).clamp(180.0, 300.0);
+    // Windows taller than 720 px (fullscreen, big monitors) grow the side
+    // panels with the height, up to 1.5x, so they keep their weight next to
+    // a large board (feature-large-screen-scale).
+    final sideScale = wideSideScaleFor(c.maxHeight);
+    final side = (c.maxWidth * 0.23).clamp(180.0, 300.0 * sideScale);
     final columnHeight = c.maxHeight - pad - bottomPad;
     // Sticker lanes around the board. The left and right lanes take the
     // place of the gaps, and only when the board keeps its minimum size.
@@ -558,11 +566,11 @@ class CampHudLayout extends StatelessWidget {
       width: side,
       height: columnHeight,
       child: FittedBox(
-        fit: BoxFit.scaleDown,
+        fit: sideScale > 1 ? BoxFit.contain : BoxFit.scaleDown,
         alignment: Alignment.center,
-        // Panels are laid out at least at their design width and scaled
-        // down as a whole on small screens.
-        child: SizedBox(width: math.max(side, 270), child: child),
+        // Panels are laid out at least 270 px wide and scaled as a whole:
+        // down on small screens, up (to 1.5x) on tall ones.
+        child: SizedBox(width: math.max(side / sideScale, 270), child: child),
       ),
     );
 

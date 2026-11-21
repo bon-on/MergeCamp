@@ -20,6 +20,7 @@ related_specs:
   - feature-run-goal
   - feature-second-wind
   - feature-tool-hints
+  - feature-large-screen-scale
 ---
 
 # ADR: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합을 사용

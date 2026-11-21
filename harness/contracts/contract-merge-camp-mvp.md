@@ -19,6 +19,7 @@ related_specs:
   - feature-run-goal
   - feature-second-wind
   - feature-tool-hints
+  - feature-large-screen-scale
 evidence_files:
   - reports/merge-camp-audit-report.md
   - reports/merge-camp-plan-report.md
