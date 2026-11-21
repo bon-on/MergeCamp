@@ -12,6 +12,7 @@ related_specs:
   - feature-camp-stickers
   - feature-next-goal-share
   - feature-second-wind
+  - feature-instant-first-run
 evidence_files:
   - docs/crazygames.md
   - reports/merge-camp-crazygames-verification.md

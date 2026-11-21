@@ -10,6 +10,15 @@ related_specs:
   - feature-camp-stickers
   - feature-next-goal-share
   - feature-first-minute-rewards
+  - feature-camp-shift
+  - feature-daily-camp
+  - feature-first-minute-polish
+  - feature-how-to-play-tutorial
+  - feature-instant-first-run
+  - feature-merge-feel-timing
+  - feature-run-goal
+  - feature-second-wind
+  - feature-tool-hints
 evidence_files:
   - reports/merge-camp-audit-report.md
   - reports/merge-camp-plan-report.md

@@ -6,6 +6,8 @@ related_specs:
   - feature-first-run-resume
   - feature-first-minute-rewards
   - feature-daily-camp
+  - feature-camp-shift
+  - feature-second-wind
 ---
 
 # ADR: Persist live runs and meta progress in one local envelope

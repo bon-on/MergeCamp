@@ -11,6 +11,15 @@ related_specs:
   - feature-camp-stickers
   - feature-next-goal-share
   - feature-first-minute-rewards
+  - feature-camp-shift
+  - feature-daily-camp
+  - feature-first-minute-polish
+  - feature-how-to-play-tutorial
+  - feature-instant-first-run
+  - feature-merge-feel-timing
+  - feature-run-goal
+  - feature-second-wind
+  - feature-tool-hints
 ---
 
 # ADR: MergeCamp MVP에 Flutter UI와 플랫폼 피드백 통합을 사용
