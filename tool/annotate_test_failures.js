@@ -15,6 +15,7 @@ const escapeProperty = (s) => escape(s).replace(/:/g, '%3A').replace(/,/g, '%2C'
 
 const tests = {};
 const errors = {};
+const prints = {};
 for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
   if (!line.trim()) continue;
   let event;
@@ -24,6 +25,9 @@ for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     continue;
   }
   if (event.type === 'testStart') tests[event.test.id] = event.test;
+  if (event.type === 'print') {
+    (prints[event.testID] ||= []).push(event.message);
+  }
   if (event.type === 'error') {
     (errors[event.testID] ||= []).push(event.error);
   }
