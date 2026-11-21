@@ -54,12 +54,14 @@ cd build && python3 -m http.server 8765
 
 - [ ] 개발자 포털에서 Basic Launch로 먼저 제출한다(Basic Launch에서는 광고가 꺼진다).
 - [ ] 지원 방향은 세로(portrait)로 등록한다. 데스크톱에서는 가로 화면 가운데에 560px 폭으로 표시된다.
-- [ ] 썸네일과 설명 문구를 준비한다(`docs/store-listing-copy.md` 참고).
+- [ ] 커버 3종과 미리보기 영상 2개는 `../_marketing/MergeCamp/upload_v3/`를 쓴다(2026-11-21). CrazyGames 규정상 커버에는 게임 제목 외의 글자를 넣을 수 없어서, 예전 커버(`covers/`, 태그라인 포함)는 쓰지 않는다. 새 커버는 게임의 타일·배경 그림을 그대로 렌더링해 합성했다(`../_marketing/tools/compose_mergecamp_v3.py`). 영상은 커버 1.5초로 시작해 게임 화면으로 넘어가며, 19.5초이고 소리가 없다.
+- [ ] 설명 문구는 `docs/store-listing-copy.md`를 참고한다.
+- [ ] 2026-11-23 이후 Basic Launch를 시작하는 게임은 썸네일 CTR(같은 분류 상위 20%)까지 네 지표로 평가된다. 나머지 셋은 평균 플레이타임, D1 리텐션, 1분 이상 플레이 비율이다.
 - [ ] 포털의 QA tool에서 로딩, gameplay 이벤트, midgame 광고를 확인한다.
 
 ## 알려진 제한
 
-- 키보드 조작은 없다. 클릭/탭만으로 전체 플레이가 가능하다.
+- 클릭/탭만으로 전체 플레이가 가능하다. 키보드(방향키/WASD, Enter/Space, X/E, C, R)는 선택 사항이다.
 - 보상형 광고는 Second Wind(세션당 1번)에만 쓰고, 배너는 쓰지 않는다. Basic Launch에서는 SDK가 모든 광고를 거절(`adsDisabled`)하고 "동작 없는 보상형 버튼"은 QA 탈락 사유라서, 기본 빌드는 꺼져 있다. Full Launch 승인 뒤에만 `CRAZYGAMES_REWARDED=true tool/build_crazygames.sh`로 켠다.
 - 진행도는 SDK Data 모듈에 저장한다(`feature-crazygames-cloud-save`). 업로드할 때 제출 화면의 **Progress Save**에서
   "Yes, using the Data Module from the CrazyGames SDK"를 반드시 선택한다. 선택하지 않으면 Data 모듈이 꺼져 있어
