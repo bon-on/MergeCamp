@@ -16,7 +16,6 @@ class SecondWindOverlay extends StatelessWidget {
     required this.onEnd,
     required this.continueFocus,
     this.busy = false,
-    this.unavailable = false,
   });
 
   final CampTheme theme;
@@ -29,9 +28,6 @@ class SecondWindOverlay extends StatelessWidget {
 
   /// True while the rewarded ad is showing.
   final bool busy;
-
-  /// True after an ad that did not finish; the reward is not given.
-  final bool unavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -80,24 +76,11 @@ class SecondWindOverlay extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (unavailable) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Video unavailable right now.',
-                            key: const ValueKey('second-wind-unavailable'),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: palette.danger,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 16),
                         CampButton(
                           key: const ValueKey('second-wind-continue'),
                           palette: palette,
-                          label: unavailable ? 'Try again' : 'Continue',
+                          label: 'Watch video to continue',
                           icon: Icons.play_circle_rounded,
                           focusNode: continueFocus,
                           onPressed: busy ? null : onContinue,
@@ -108,7 +91,6 @@ class SecondWindOverlay extends StatelessWidget {
                           palette: palette,
                           label: 'End run',
                           primary: false,
-                          height: 46,
                           onPressed: busy ? null : onEnd,
                         ),
                       ],

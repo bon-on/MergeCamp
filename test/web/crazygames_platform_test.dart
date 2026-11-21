@@ -154,7 +154,7 @@ void main() {
   test('rewarded ad pays out only when it finishes', () async {
     late JSObject callbacks;
     final sdk = _FakeSdk(onRequestAd: (value) => callbacks = value);
-    final platform = CrazyGamesPlatform();
+    final platform = CrazyGamesPlatform()..rewardedEnabledOverride = true;
     await platform.initialize();
     expect(platform.supportsRewardedAds, isTrue);
 
@@ -180,6 +180,26 @@ void main() {
     expect(await platform.showRewardedAd(), isFalse);
     expect(platform.isAudioMuted, isFalse);
   });
+
+  test(
+    'Basic Launch builds and adsDisabled never offer rewarded ads',
+    () async {
+      _FakeSdk(
+        onRequestAd: (callbacks) => callbacks.callMethod(
+          'adError'.toJS,
+          JSObject()..setProperty('code'.toJS, 'adsDisabled'.toJS),
+        ),
+      );
+      final platform = CrazyGamesPlatform();
+      await platform.initialize();
+      expect(platform.supportsRewardedAds, isFalse);
+
+      platform.rewardedEnabledOverride = true;
+      expect(platform.supportsRewardedAds, isTrue);
+      expect(await platform.showRewardedAd(), isFalse);
+      expect(platform.supportsRewardedAds, isFalse);
+    },
+  );
 
   test('without the SDK there is no rewarded ad', () async {
     final platform = CrazyGamesPlatform();

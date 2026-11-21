@@ -8,12 +8,17 @@ ROOT="$(pwd)"
 OUT="$ROOT/build/crazygames"
 ZIP="$ROOT/build/merge-camp-crazygames.zip"
 SDK_URL="https://sdk.crazygames.com/crazygames-sdk-v3.js"
+# Rewarded ads (Second Wind) are off in Basic Launch, where the SDK refuses every
+# ad: a button that does nothing fails QA. Build with CRAZYGAMES_REWARDED=true
+# for Full Launch.
+REWARDED="${CRAZYGAMES_REWARDED:-false}"
 
 rm -rf "$OUT" "$ZIP"
 flutter build web --release \
   --base-href / \
   --no-web-resources-cdn \
   --dart-define=CRAZYGAMES=true \
+  --dart-define=CRAZYGAMES_REWARDED="$REWARDED" \
   --output "$OUT"
 
 INDEX="$OUT/index.html"

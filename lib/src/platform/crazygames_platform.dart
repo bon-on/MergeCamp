@@ -18,7 +18,19 @@ class CrazyGamesPlatform extends GamePlatform {
   static const Duration _initTimeout = Duration(seconds: 5);
   static const Duration _adTimeout = Duration(seconds: 120);
 
+  /// Rewarded ads only exist after Full Launch (`CRAZYGAMES_REWARDED=true`).
+  static const bool _rewardedBuild = bool.fromEnvironment(
+    'CRAZYGAMES_REWARDED',
+  );
+
   _Sdk? _sdk;
+
+  /// Replaces the build flag (tests only).
+  @visibleForTesting
+  bool? rewardedEnabledOverride;
+
+  // Set once the SDK answered an ad request with `adsDisabled`.
+  bool _adsDisabled = false;
 
   /// Replaces the page reload done on a login/logout (tests only).
   @visibleForTesting
@@ -119,7 +131,10 @@ class CrazyGamesPlatform extends GamePlatform {
   Future<void> showRunBreakAd() => _requestAd('midgame').then((_) {});
 
   @override
-  bool get supportsRewardedAds => _sdk != null;
+  bool get supportsRewardedAds =>
+      (rewardedEnabledOverride ?? _rewardedBuild) &&
+      _sdk != null &&
+      !_adsDisabled;
 
   @override
   Future<bool> showRewardedAd() => _requestAd('rewarded');
@@ -147,7 +162,11 @@ class CrazyGamesPlatform extends GamePlatform {
           adStarted: (() => _setAdPlaying(true)).toJS,
           adFinished: (() => finish(true)).toJS,
           adError: ((JSAny? error) {
-            debugPrint('CrazyGames $adType ad error: ${error?.dartify()}');
+            final details = error?.dartify();
+            debugPrint('CrazyGames $adType ad error: $details');
+            if (details is Map && details['code'] == 'adsDisabled') {
+              _adsDisabled = true;
+            }
             finish(false);
           }).toJS,
         ),

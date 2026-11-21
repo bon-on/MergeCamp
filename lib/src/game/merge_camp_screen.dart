@@ -116,7 +116,8 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   // Second Wind (feature-second-wind): a locked board waits for the player's
   // choice before the run is settled.
   bool _secondWindOffer = false;
-  bool _secondWindUnavailable = false;
+  // CrazyGames allows a revive offer once per session, not on every lock.
+  bool _secondWindShown = false;
   final FocusNode _secondWindFocus = FocusNode(debugLabel: 'SecondWind');
   int _completedRuns = 0;
   // The tutorial blocks all game input while the first-run check is pending
@@ -591,10 +592,11 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
         _trailAxeMode = false;
         _shiftMode = false;
         if (widget.platform.supportsRewardedAds &&
+            !_secondWindShown &&
             _controller.canRevive &&
             !_guidedPractice) {
           _secondWindOffer = true;
-          _secondWindUnavailable = false;
+          _secondWindShown = true;
           _syncGameplay();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _secondWindOffer) _secondWindFocus.requestFocus();
@@ -636,10 +638,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
   /// lowest camps and resumes the run; anything else keeps the card.
   Future<void> _continueSecondWind() async {
     if (!_secondWindOffer || _breakAdInProgress) return;
-    setState(() {
-      _breakAdInProgress = true;
-      _secondWindUnavailable = false;
-    });
+    setState(() => _breakAdInProgress = true);
     _feedback.stopMusic();
     var watched = false;
     try {
@@ -657,7 +656,10 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       _syncGameplay();
       _focusNode.requestFocus();
     } else {
-      _secondWindUnavailable = true;
+      // No reward without a finished ad, and no dead button: settle the run.
+      _secondWindOffer = false;
+      _settleRunEnd();
+      _toast('No video available right now.', Icons.info_outline_rounded);
     }
     setState(() {});
   }
@@ -1473,7 +1475,6 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
                         theme: _theme,
                         clears: MergeCampController.secondWindClears,
                         busy: _breakAdInProgress,
-                        unavailable: _secondWindUnavailable,
                         continueFocus: _secondWindFocus,
                         onContinue: () => unawaited(_continueSecondWind()),
                         onEnd: _endSecondWind,

@@ -233,13 +233,14 @@ void main() {
       expect(find.text('Play again'), findsNothing);
     });
 
-    testWidgets('an unfinished ad keeps the card and clears nothing', (
+    testWidgets('an unfinished ad rewards nothing and settles the run', (
       tester,
     ) async {
       final platform = _RewardedPlatform();
       final controller = MergeCampController();
+      final store = MemoryCampProgressStore();
       addTearDown(controller.dispose);
-      await _pump(tester, platform, controller);
+      await _pump(tester, platform, controller, store: store);
       _loadLock(controller);
       controller.place(15);
       await tester.pump();
@@ -252,12 +253,30 @@ void main() {
 
       expect(controller.isGameOver, isTrue);
       expect(controller.board.where((t) => t != null).length, 16);
-      expect(
-        find.byKey(const ValueKey('second-wind-unavailable')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('second-wind-card')), findsNothing);
+      expect(find.text('Play again'), findsOneWidget);
+      expect(store.value.bestScore, controller.score);
+    });
 
+    testWidgets('the offer comes once per session, not on every lock', (
+      tester,
+    ) async {
+      final platform = _RewardedPlatform();
+      final controller = MergeCampController();
+      addTearDown(controller.dispose);
+      await _pump(tester, platform, controller);
+      _loadLock(controller);
+      controller.place(15);
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('second-wind-end')));
+      await tester.pump();
+      expect(find.text('Play again'), findsOneWidget);
+
+      // A new run that locks again in the same session gets no card.
+      controller.restart();
+      await tester.pump();
+      _loadLock(controller);
+      controller.place(15);
       await tester.pump();
       expect(find.byKey(const ValueKey('second-wind-card')), findsNothing);
       expect(find.text('Play again'), findsOneWidget);
