@@ -115,6 +115,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
 
   Future<Uint8List?>? _card;
   bool _compact = false;
+  bool _tight = false;
   bool _sharing = false;
   int _toastSerial = 0;
   ToastMessage? _toast;
@@ -190,6 +191,9 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     // Short screens trim the decoration so the facts keep some room next
     // to the pinned goal and buttons.
     _compact = screen.height < (wide ? 520 : 720);
+    // Only the short landscape card pins every action beside the facts;
+    // portrait phones keep the larger touch targets.
+    _tight = wide && _compact;
     final facts = SingleChildScrollView(
       child: AnimatedBuilder(
         animation: _controller,
@@ -231,11 +235,19 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
                                 const SizedBox(width: 18),
                                 SizedBox(
                                   width: 260,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: _actions(palette),
+                                  // Scrolls only if fonts run taller than
+                                  // expected, so the action column never
+                                  // overflows.
+                                  child: SingleChildScrollView(
+                                    key: const ValueKey(
+                                      'summary-actions-scroll',
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: _actions(palette),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -292,7 +304,8 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
             label: label,
             icon: icon,
             primary: false,
-            height: 42,
+            // Short screens keep the pinned column inside the card.
+            height: _tight ? 38 : 42,
             fontSize: 13,
             onPressed: onPressed,
           ),
@@ -306,18 +319,18 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
     final busy = _sharing;
     return [
       _goalHighlight(palette),
-      const SizedBox(height: 10),
+      SizedBox(height: _tight ? 8 : 10),
       CampButton(
         key: const ValueKey('summary-play-again'),
         palette: palette,
         label: widget.report.isDaily ? 'Try again' : 'Play again',
         icon: Icons.replay_rounded,
-        height: _compact ? 54 : 60,
+        height: _tight ? 50 : (_compact ? 54 : 60),
         fontSize: _compact ? 19 : 21,
         focusNode: widget.playAgainFocus,
         onPressed: widget.busy ? null : widget.onPlayAgain,
       ),
-      const SizedBox(height: 8),
+      SizedBox(height: _tight ? 6 : 8),
       Row(
         children: spaced([
           small('Album', Icons.collections_bookmark_rounded, widget.onAlbum),
@@ -337,11 +350,11 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         ]),
       ),
       if (!widget.report.isDaily) ...[
-        const SizedBox(height: 6),
+        SizedBox(height: _tight ? 4 : 6),
         _dailyHook(palette),
       ],
       if (link != null) ...[
-        const SizedBox(height: 8),
+        SizedBox(height: _tight ? 6 : 8),
         Row(
           key: const ValueKey('summary-share-row'),
           children: spaced([
@@ -408,7 +421,10 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay>
         borderRadius: BorderRadius.circular(12),
         onTap: tappable && !widget.busy ? onDaily : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: _tight ? 4 : 6,
+          ),
           child: Row(
             children: [
               Icon(

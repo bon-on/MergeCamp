@@ -222,7 +222,7 @@ void main() {
     expect(
       find.descendant(
         of: hook,
-        matching: find.textContaining("play today's daily camp"),
+        matching: find.text("Play today's daily camp and start a streak"),
       ),
       findsOneWidget,
     );

@@ -57,6 +57,10 @@ player a reason to come back tomorrow.
   comes from the screen clock passed to the overlay. Play again stays the
   default keyboard focus and the largest button; the nearest next goal
   (feature-next-goal-share) stays pinned above it, so no extra goal is added.
+  On short landscape screens (wide and compact summary, e.g. 844x390) the
+  pinned action column trims its button heights and gaps so the hook fits
+  without scrolling, and scrolls instead of overflowing if fonts run taller
+  (2026-11-25). Portrait summaries keep their button sizes.
 - Saved data: optional `daily` object in `camp_progress_v1`
   (`lastDay`, `streak`, `best`, `graceReady`, `refillLeft`, `total`,
   `bestDay`, `bestScore`). Old saves load without it. The run snapshot gets an

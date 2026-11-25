@@ -265,6 +265,16 @@ void main() {
       // Always on screen without scrolling, and the biggest button.
       expect(play.top, greaterThanOrEqualTo(0));
       expect(play.bottom, lessThanOrEqualTo(size.height));
+      // Wide cards pin the actions in a scroll view that only scrolls when
+      // fonts run taller than the test font: here every action fits.
+      final actions = find.byKey(const ValueKey('summary-actions-scroll'));
+      if (actions.evaluate().isNotEmpty) {
+        expect(find.byKey(const ValueKey('summary-daily-hook')), findsOne);
+        final scrollable = tester.state<ScrollableState>(
+          find.descendant(of: actions, matching: find.byType(Scrollable)),
+        );
+        expect(scrollable.position.maxScrollExtent, 0);
+      }
       // The highlighted next goal is pinned in view too.
       final goal = tester.getRect(
         find.byKey(const ValueKey('next-goal-highlight')),

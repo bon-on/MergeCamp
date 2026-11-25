@@ -46,3 +46,17 @@ below-bar daily runs keep their score as the day's best, retry after midnight
 uses today's camp) and covered by new tests. The fixes were not re-reviewed.
 Known and accepted: the offline local-clock design lets a player move the
 clock forward to claim a daily per fake day.
+
+## Summary hook fix (2026-11-25)
+
+Commit 4ee7cd2 was written on a PC where `flutter test` could not run. On macOS
+four tests failed: the summary hook test searched for "play today's daily camp"
+while a zero-streak hook reads "Play today's daily camp..." (matcher fixed), and
+the summary at 844x390 overflowed by 14 px in `ui_screen_test`,
+`result_share_test` and `decor_stickers_test`. The wide and compact action
+column now uses smaller button heights and gaps and scrolls as a fallback;
+portrait summaries keep their sizes. `result_share_test` asserts the action
+column does not scroll at the wide sizes (it fails with the trims turned off).
+Independent review: approve with comments, no Critical/High; its test-gap,
+scope, matcher and comment notes were applied. `flutter analyze`: no issues.
+`flutter test`: 440 passed.
