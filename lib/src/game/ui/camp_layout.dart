@@ -267,17 +267,24 @@ class CampHudLayout extends StatelessWidget {
     );
   }
 
-  Widget _toastColumn(CampPalette palette) {
+  Widget _toastColumn(CampPalette palette, {bool latestOnly = false}) {
+    // Hidden toasts stay mounted with their timers running, so they keep
+    // their lifetime and never replay when they show again.
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         for (final toast in toasts)
-          CampToast(
+          Visibility(
             key: ValueKey('toast-${toast.id}'),
-            message: toast,
-            palette: palette,
-            onDone: () => onToastDone(toast),
+            visible: !latestOnly || identical(toast, toasts.last),
+            maintainState: true,
+            maintainAnimation: true,
+            child: CampToast(
+              message: toast,
+              palette: palette,
+              onDone: () => onToastDone(toast),
+            ),
           ),
       ],
     );
@@ -468,8 +475,11 @@ class CampHudLayout extends StatelessWidget {
                   if (_discoveryBanner(loopingArt) case final banner?) ...[
                     const SizedBox(height: 10),
                     banner,
-                  ],
-                  _toastColumn(palette),
+                    // The banner leaves room for one toast: keep the newest
+                    // whole instead of clipping it (feature-quality-guideline-polish).
+                    _toastColumn(palette, latestOnly: true),
+                  ] else
+                    _toastColumn(palette),
                 ],
               ),
             ),

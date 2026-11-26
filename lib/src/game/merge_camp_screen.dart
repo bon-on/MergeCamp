@@ -1173,7 +1173,7 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
       }
       // With a camp picked the arrows choose its direction; before that
       // they move the cursor like usual.
-      final direction = _shiftFrom == null ? null : _shiftDirectionOf(key);
+      final direction = _shiftFrom == null ? null : _directionOf(event);
       if (direction != null) {
         if (!isRepeat) unawaited(_applyShift(direction));
         return KeyEventResult.handled;
@@ -1184,23 +1184,17 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     }
     final size = _controller.board.length;
     final current = _cursor ?? 0;
-    int? next;
-    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
-      next = current % _boardColumns == 0 ? current : current - 1;
-    } else if (key == LogicalKeyboardKey.arrowRight ||
-        key == LogicalKeyboardKey.keyD) {
-      next = current % _boardColumns == _boardColumns - 1
-          ? current
-          : current + 1;
-    } else if (key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.keyW) {
-      next = current - _boardColumns < 0 ? current : current - _boardColumns;
-    } else if (key == LogicalKeyboardKey.arrowDown ||
-        key == LogicalKeyboardKey.keyS) {
-      next = current + _boardColumns >= size
-          ? current
-          : current + _boardColumns;
-    }
+    final int? next = switch (_directionOf(event)) {
+      ShiftDirection.left =>
+        current % _boardColumns == 0 ? current : current - 1,
+      ShiftDirection.right =>
+        current % _boardColumns == _boardColumns - 1 ? current : current + 1,
+      ShiftDirection.up =>
+        current - _boardColumns < 0 ? current : current - _boardColumns,
+      ShiftDirection.down =>
+        current + _boardColumns >= size ? current : current + _boardColumns,
+      null => null,
+    };
     if (next != null) {
       // The first key press only reveals the cursor without moving it.
       setState(() => _cursor = _cursor == null ? 0 : next);
@@ -1235,22 +1229,35 @@ class _MergeCampScreenState extends State<MergeCampScreen> {
     return KeyEventResult.ignored;
   }
 
-  static ShiftDirection? _shiftDirectionOf(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
-      return ShiftDirection.up;
-    }
-    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
-      return ShiftDirection.down;
-    }
-    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
-      return ShiftDirection.left;
-    }
-    if (key == LogicalKeyboardKey.arrowRight ||
-        key == LogicalKeyboardKey.keyD) {
-      return ShiftDirection.right;
-    }
-    return null;
-  }
+  /// Arrows by meaning, WASD by key position, so AZERTY players use the
+  /// same keys under their fingers (ZQSD) (feature-quality-guideline-polish).
+  static final Map<LogicalKeyboardKey, ShiftDirection> _arrowDirections = {
+    LogicalKeyboardKey.arrowUp: ShiftDirection.up,
+    LogicalKeyboardKey.arrowDown: ShiftDirection.down,
+    LogicalKeyboardKey.arrowLeft: ShiftDirection.left,
+    LogicalKeyboardKey.arrowRight: ShiftDirection.right,
+  };
+  static final Map<PhysicalKeyboardKey, ShiftDirection> _wasdDirections = {
+    PhysicalKeyboardKey.keyW: ShiftDirection.up,
+    PhysicalKeyboardKey.keyS: ShiftDirection.down,
+    PhysicalKeyboardKey.keyA: ShiftDirection.left,
+    PhysicalKeyboardKey.keyD: ShiftDirection.right,
+  };
+
+  /// Letters with their own binding keep it on any layout (Dvorak sends E
+  /// from the D position, for example).
+  static final Set<LogicalKeyboardKey> _letterBindings = {
+    LogicalKeyboardKey.keyR,
+    LogicalKeyboardKey.keyC,
+    LogicalKeyboardKey.keyX,
+    LogicalKeyboardKey.keyE,
+  };
+
+  static ShiftDirection? _directionOf(KeyEvent event) =>
+      _arrowDirections[event.logicalKey] ??
+      (_letterBindings.contains(event.logicalKey)
+          ? null
+          : _wasdDirections[event.physicalKey]);
 
   Future<void> _handleCellTap(
     int index, {

@@ -103,6 +103,57 @@ void main() {
     expect(controller.placements, 2);
   });
 
+  testWidgets('WASD follows key positions on an AZERTY keyboard', (
+    tester,
+  ) async {
+    // feature-quality-guideline-polish Q1: AZERTY sends Z/Q for the W/A
+    // positions, and its W and A sit where QWERTY has Z and Q.
+    Future<void> azerty(LogicalKeyboardKey logical, PhysicalKeyboardKey at) =>
+        tester.sendKeyEvent(logical, physicalKey: at);
+    final controller = await _pump(tester, scripted: [1, 2, 1, 2]);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown); // reveal at 0
+    await azerty(LogicalKeyboardKey.keyD, PhysicalKeyboardKey.keyD); // 1
+    await azerty(LogicalKeyboardKey.keyS, PhysicalKeyboardKey.keyS); // 5
+    await azerty(LogicalKeyboardKey.keyW, PhysicalKeyboardKey.keyZ); // no-op
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.board[5], isNotNull);
+
+    await _settle(tester);
+    // AZERTY A sits on the Q position: not a move (cursor stays on 5).
+    await azerty(LogicalKeyboardKey.keyA, PhysicalKeyboardKey.keyQ);
+    await azerty(LogicalKeyboardKey.keyQ, PhysicalKeyboardKey.keyA); // 4
+    await azerty(LogicalKeyboardKey.keyZ, PhysicalKeyboardKey.keyW); // 0
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(controller.board[0], isNotNull);
+    expect(controller.placements, 2);
+  });
+
+  testWidgets('E keeps the axe on a layout that sends it from the D key', (
+    tester,
+  ) async {
+    // Dvorak: the D position sends E, which stays the Trail Axe key.
+    final controller = await _pump(tester);
+    controller.debugLoadBoard(
+      const [1, 2, 3, 4, 2, 3, 4, 1, 3, 4, 1, 2, 4, 1, 2, null],
+      nextTier: 4,
+      placements: 3,
+      highestTier: 4,
+      trailAxes: 1,
+      lastAwardedAxeAt: 3,
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown); // reveal at 0
+    await tester.sendKeyEvent(
+      LogicalKeyboardKey.keyE,
+      physicalKey: PhysicalKeyboardKey.keyD,
+    );
+    await tester.pump();
+    expect(controller.board[0], isNull);
+    expect(controller.board[1], 2);
+  });
+
   testWidgets('Enter on an occupied cell is rejected', (tester) async {
     final controller = await _pump(tester);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter); // reveal

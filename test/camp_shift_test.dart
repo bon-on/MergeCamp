@@ -518,6 +518,25 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 2));
     });
 
+    testWidgets('keyboard: AZERTY Z (the W key position) shifts up', (
+      tester,
+    ) async {
+      // feature-quality-guideline-polish Q2.
+      final c = _loaded({9: 1, 10: 2});
+      await _pump(tester, c);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.pump();
+      await tester.tap(_cell(9));
+      await tester.pump();
+      await tester.sendKeyEvent(
+        LogicalKeyboardKey.keyZ,
+        physicalKey: PhysicalKeyboardKey.keyW,
+      );
+      await tester.pump();
+      expect(c.board, _board({5: 1, 10: 2}));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+    });
+
     testWidgets('Esc drops the pick first, then leaves the mode', (
       tester,
     ) async {

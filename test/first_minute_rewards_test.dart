@@ -9,6 +9,7 @@ import 'package:merge_camp/src/audio/sound_mute_store.dart';
 import 'package:merge_camp/src/game/how_to_play.dart';
 import 'package:merge_camp/src/game/merge_camp_controller.dart';
 import 'package:merge_camp/src/game/merge_camp_screen.dart';
+import 'package:merge_camp/src/game/ui/banners.dart';
 import 'package:merge_camp/src/game/ui/camp_ui.dart';
 import 'package:merge_camp/src/meta/camp_progress.dart';
 import 'package:merge_camp/src/meta/camp_progress_store.dart';
@@ -48,6 +49,7 @@ Future<_Screen> _pump(
   required MemoryCampProgressStore store,
   int seed = 0,
   MissionBoard? missions,
+  Size size = const Size(390, 844),
 }) async {
   final audio = <String>[];
   for (final channel in const [
@@ -69,7 +71,7 @@ Future<_Screen> _pump(
       ),
     );
   }
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final controller = MergeCampController(random: Random(seed));
@@ -335,6 +337,46 @@ void main() {
   });
 
   group('screen', () {
+    testWidgets('desktop first merge keeps every visible toast whole', (
+      tester,
+    ) async {
+      // feature-quality-guideline-polish Q4: 1100x620 is the CrazyGames
+      // desktop frame, where the banner and two toasts used to be clipped.
+      await _pump(
+        tester,
+        tutorial: _TutorialStore(),
+        store: MemoryCampProgressStore(),
+        size: const Size(1100, 620),
+      );
+      await _startFirstRun(tester);
+      await tester.tap(_cell(2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.takeException(), isNull);
+      final banner = find.byType(DiscoveryBanner);
+      expect(banner, findsOneWidget);
+      final toasts = find.byType(CampToast);
+      expect(toasts, findsOneWidget);
+      expect(
+        find.text('First merge! Welcome bonus +150 camp XP'),
+        findsOneWidget,
+      );
+      final clip = tester.getRect(
+        find.ancestor(of: banner, matching: find.byType(ClipRect)).first,
+      );
+      for (final element in toasts.evaluate()) {
+        final rect = tester.getRect(find.byWidget(element.widget));
+        expect(rect.bottom, lessThanOrEqualTo(clip.bottom));
+        expect(rect.top, greaterThanOrEqualTo(clip.top));
+      }
+      // The hidden toast kept its own clock: once the banner is gone, no
+      // toast shows again or replays.
+      await tester.pump(const Duration(milliseconds: 2400));
+      expect(find.byType(DiscoveryBanner), findsNothing);
+      expect(find.byType(CampToast), findsNothing);
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+    });
+
     testWidgets('a new player levels up with a second sticker in the first '
         'run', (tester) async {
       final store = MemoryCampProgressStore();

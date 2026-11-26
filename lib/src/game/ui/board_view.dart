@@ -338,22 +338,14 @@ class _BoardCellState extends State<_BoardCell> {
                           border: Border.all(color: palette.accent, width: 3),
                           color: palette.accent.withValues(alpha: 0.12),
                         ),
-                        child: widget.previewOrigin && widget.previewChain > 0
+                        // Only a real chain gets a label; the result art
+                        // already shows the tier (feature-quality-guideline-polish).
+                        child: widget.previewOrigin && widget.previewChain > 1
                             ? Align(
                                 alignment: Alignment.bottomCenter,
-                                child: Container(
-                                  color: palette.panel,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 3,
-                                  ),
-                                  child: Text(
-                                    'T${widget.nextTier} / x${widget.previewChain}',
-                                    style: TextStyle(
-                                      color: palette.textPrimary,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
+                                child: _ChainLabel(
+                                  chain: widget.previewChain,
+                                  palette: palette,
                                 ),
                               )
                             : null,
@@ -578,6 +570,51 @@ class _DangerGlowState extends State<_DangerGlow>
           );
         },
       ),
+    );
+  }
+}
+
+/// "Chain xN" under a chain preview, or just "xN" when the cell is too
+/// narrow, always at 11 px and never wrapped, so the count stays visible
+/// (feature-quality-guideline-polish).
+class _ChainLabel extends StatelessWidget {
+  const _ChainLabel({required this.chain, required this.palette});
+
+  final int chain;
+  final CampPalette palette;
+
+  static const double _padding = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      color: palette.textPrimary,
+      fontSize: 11,
+      fontWeight: FontWeight.w800,
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        final long = 'Chain x$chain';
+        final painter = TextPainter(
+          text: TextSpan(text: long, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        final fits = painter.width + _padding * 2 <= box.maxWidth;
+        painter.dispose();
+        return Container(
+          color: palette.panel,
+          padding: const EdgeInsets.symmetric(horizontal: _padding),
+          child: Text(
+            fits ? long : 'x$chain',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            style: style,
+          ),
+        );
+      },
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_camp/src/audio/sound_mute_store.dart';
@@ -147,6 +148,37 @@ const _starterKinds = [
   MissionKind.placeTiles,
   MissionKind.buildTier,
 ];
+
+/// Loads a board where placing on plot 0 chains twice, shows the cursor
+/// there and checks the label keeps the count, unwrapped, at 11 px.
+Future<void> _chainPreview(WidgetTester tester, Size size) async {
+  final s = await _pump(
+    tester,
+    tutorial: _TutorialStore(seen: true),
+    store: MemoryCampProgressStore(),
+    size: size,
+  );
+  final board = List<int?>.filled(16, null);
+  board[1] = 1;
+  board[2] = 1;
+  board[4] = 2;
+  board[8] = 2;
+  s.controller.debugLoadBoard(board, nextTier: 1, previewTiers: [1, 2, 1]);
+  await tester.pump();
+  await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight); // cursor at 0
+  await tester.pump();
+  final label = find.textContaining(RegExp(r'x2$'));
+  expect(label, findsOneWidget);
+  final text = tester.widget<Text>(label);
+  expect(text.style!.fontSize, greaterThanOrEqualTo(11));
+  final paragraph = tester.renderObject<RenderParagraph>(label);
+  expect(paragraph.didExceedMaxLines, isFalse);
+  final cell = tester.getRect(
+    find.ancestor(of: label, matching: find.byType(Align)).first,
+  );
+  expect(tester.getRect(label).width, lessThanOrEqualTo(cell.width));
+  expect(tester.takeException(), isNull);
+}
 
 void main() {
   testWidgets('first Play starts a guided merge with fixed starter missions', (
@@ -541,6 +573,43 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  for (final size in const [Size(390, 844), Size(360, 640), Size(640, 360)]) {
+    testWidgets('a two-step chain preview shows its count whole at $size', (
+      tester,
+    ) async {
+      await _chainPreview(tester, size);
+    });
+  }
+
+  testWidgets('a two-step chain preview reads "Chain x2" at 11 px or more', (
+    tester,
+  ) async {
+    // feature-quality-guideline-polish Q3.
+    final s = await _pump(
+      tester,
+      tutorial: _TutorialStore(seen: true),
+      store: MemoryCampProgressStore(),
+      // Big cells: the test font is wider than the real one.
+      size: const Size(1920, 1080),
+    );
+    final board = List<int?>.filled(16, null);
+    board[1] = 1;
+    board[2] = 1;
+    board[4] = 2;
+    board[8] = 2;
+    s.controller.debugLoadBoard(board, nextTier: 1, previewTiers: [1, 2, 1]);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight); // cursor at 0
+    await tester.pump();
+    final label = find.text('Chain x2');
+    expect(label, findsOneWidget);
+    expect(
+      tester.widget<Text>(label).style!.fontSize,
+      greaterThanOrEqualTo(11),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cursor and hover preview the merge without changing state', (
     tester,
   ) async {
@@ -561,7 +630,9 @@ void main() {
     await tester.pump();
     expect(_placementPreview, findsOneWidget);
     expect(_mergePreview, findsNWidgets(3));
-    expect(find.text('T2 / x1'), findsOneWidget);
+    // feature-quality-guideline-polish Q3: a one-step merge has no label.
+    expect(find.textContaining('T2'), findsNothing);
+    expect(find.textContaining('Chain x'), findsNothing);
     expect(s.controller.toSnapshot(), before);
 
     // Occupied plot: no preview.
