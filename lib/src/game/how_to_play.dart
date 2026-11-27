@@ -215,60 +215,79 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                       borderRadius: BorderRadius.circular(26),
                       side: BorderSide(color: palette.panelBorder, width: 1.5),
                     ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          Text(
-                            'How to play',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: palette.textPrimary,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _illustration(step, palette),
-                          const SizedBox(height: 16),
-                          Text(
-                            step.text,
-                            key: const ValueKey('how-to-play-text'),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: palette.textPrimary,
-                              fontSize: 15,
-                              height: 1.4,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: <Widget>[
-                              for (var i = 0; i < widget.steps.length; i++)
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 3,
-                                  ),
-                                  width: i == _index ? 20 : 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(4),
-                                    color: i == _index
-                                        ? palette.accent
-                                        : palette.textSecondary.withValues(
-                                            alpha: 0.3,
-                                          ),
+                    // Skip and Next stay pinned below the scrolling step so
+                    // short or landscape phones can always leave the card.
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Flexible(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                Text(
+                                  'How to play',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                            ],
+                                const SizedBox(height: 16),
+                                _illustration(step, palette),
+                                const SizedBox(height: 16),
+                                Text(
+                                  step.text,
+                                  key: const ValueKey('how-to-play-text'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontSize: 15,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    for (
+                                      var i = 0;
+                                      i < widget.steps.length;
+                                      i++
+                                    )
+                                      AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 3,
+                                        ),
+                                        width: i == _index ? 20 : 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                          color: i == _index
+                                              ? palette.accent
+                                              : palette.textSecondary
+                                                    .withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 10),
-                          Row(
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 10, 22, 14),
+                          child: Row(
                             children: <Widget>[
                               TextButton(
                                 onPressed: widget.onClose,
@@ -299,8 +318,8 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

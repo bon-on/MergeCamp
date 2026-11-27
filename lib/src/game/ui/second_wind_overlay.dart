@@ -41,60 +41,70 @@ class SecondWindOverlay extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
-                child: SingleChildScrollView(
-                  child: CampPanel(
-                    key: const ValueKey('second-wind-card'),
-                    palette: palette,
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Icon(
-                          Icons.air_rounded,
-                          size: 40,
-                          color: palette.accent,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Second Wind',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
+                child: CampPanel(
+                  key: const ValueKey('second-wind-card'),
+                  palette: palette,
+                  padding: const EdgeInsets.all(18),
+                  // The buttons stay pinned below the scrolling text so
+                  // short landscape phones can always answer the card.
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Icon(
+                                Icons.air_rounded,
+                                size: 40,
+                                color: palette.accent,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Second Wind',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: palette.textPrimary,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'The camp is jammed! Watch a short video to clear '
+                                '$clears camps and keep playing.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: palette.textSecondary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'The camp is jammed! Watch a short video to clear '
-                          '$clears camps and keep playing.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: palette.textSecondary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        CampButton(
-                          key: const ValueKey('second-wind-continue'),
-                          palette: palette,
-                          label: 'Watch video to continue',
-                          icon: Icons.play_circle_rounded,
-                          focusNode: continueFocus,
-                          onPressed: busy ? null : onContinue,
-                        ),
-                        const SizedBox(height: 10),
-                        CampButton(
-                          key: const ValueKey('second-wind-end'),
-                          palette: palette,
-                          label: 'End run',
-                          primary: false,
-                          onPressed: busy ? null : onEnd,
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 16),
+                      CampButton(
+                        key: const ValueKey('second-wind-continue'),
+                        palette: palette,
+                        label: 'Watch video to continue',
+                        icon: Icons.play_circle_rounded,
+                        focusNode: continueFocus,
+                        onPressed: busy ? null : onContinue,
+                      ),
+                      const SizedBox(height: 10),
+                      CampButton(
+                        key: const ValueKey('second-wind-end'),
+                        palette: palette,
+                        label: 'End run',
+                        primary: false,
+                        onPressed: busy ? null : onEnd,
+                      ),
+                    ],
                   ),
                 ),
               ),

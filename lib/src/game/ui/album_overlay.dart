@@ -82,13 +82,15 @@ class _AlbumOverlayState extends State<AlbumOverlay> {
                       palette: palette,
                       radius: 28,
                       padding: const EdgeInsets.fromLTRB(20, 14, 12, 18),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
+                      // The title row and close button stay pinned while
+                      // the album scrolls.
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Row(
                               children: [
                                 Icon(
                                   Icons.collections_bookmark_rounded,
@@ -123,65 +125,82 @@ class _AlbumOverlayState extends State<AlbumOverlay> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            CampLevelCard(palette: palette, progress: progress),
-                            const SizedBox(height: 14),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                const spacing = 10.0;
-                                final cell =
-                                    ((constraints.maxWidth - spacing * 3) / 4)
-                                        .clamp(40.0, 130.0);
-                                return Wrap(
-                                  spacing: spacing,
-                                  runSpacing: 12,
-                                  children: [
-                                    for (
-                                      var tier = 1;
-                                      tier <= CampProgress.maxAlbumTier;
-                                      tier++
-                                    )
-                                      _AlbumEntry(
-                                        tier: tier,
-                                        size: cell,
-                                        theme: theme,
-                                        palette: palette,
-                                        discovered: progress.discoveredTiers
-                                            .contains(tier),
-                                        animate: widget.animateArt,
-                                      ),
-                                  ],
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            PanelCaption('Themes', palette: palette),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (final t in CampTheme.values)
-                                  _ThemeChip(
-                                    theme: t,
+                          ),
+                          const SizedBox(height: 12),
+                          Flexible(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  CampLevelCard(
                                     palette: palette,
-                                    selected: t == theme,
-                                    unlocked: progress.isThemeUnlocked(t),
-                                    onTap: () => widget.onSelectTheme(t),
+                                    progress: progress,
                                   ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Earn camp XP every run to unlock new themes.',
-                              style: TextStyle(
-                                color: palette.textSecondary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                  const SizedBox(height: 14),
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      const spacing = 10.0;
+                                      final cell =
+                                          ((constraints.maxWidth -
+                                                      spacing * 3) /
+                                                  4)
+                                              .clamp(40.0, 130.0);
+                                      return Wrap(
+                                        spacing: spacing,
+                                        runSpacing: 12,
+                                        children: [
+                                          for (
+                                            var tier = 1;
+                                            tier <= CampProgress.maxAlbumTier;
+                                            tier++
+                                          )
+                                            _AlbumEntry(
+                                              tier: tier,
+                                              size: cell,
+                                              theme: theme,
+                                              palette: palette,
+                                              discovered: progress
+                                                  .discoveredTiers
+                                                  .contains(tier),
+                                              animate: widget.animateArt,
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+                                  PanelCaption('Themes', palette: palette),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      for (final t in CampTheme.values)
+                                        _ThemeChip(
+                                          theme: t,
+                                          palette: palette,
+                                          selected: t == theme,
+                                          unlocked: progress.isThemeUnlocked(t),
+                                          onTap: () => widget.onSelectTheme(t),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Earn camp XP every run to unlock new themes.',
+                                    style: TextStyle(
+                                      color: palette.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
