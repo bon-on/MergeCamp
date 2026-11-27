@@ -19,7 +19,7 @@ required_evidence:
 # 기능 명세: MergeCamp 효과음 웹 재생과 사용자 음소거 토글
 
 ## Problem
-효과음(place, merge, warning)은 이미 웹(HTML `Audio`)과 네이티브 채널로 재생되지만, 플레이어가 직접 끌 수 있는 수단이 없고 CrazyGames 플랫폼 음소거에만 의존한다. iOS 오디오 세션이 `.playback`이라 무음 스위치를 무시하고 사용자의 음악을 끊는다.
+효과음(place, merge, warning)은 이미 웹(현재는 Web Audio, `feature-web-audio-playback`)과 네이티브 채널로 재생되지만, 플레이어가 직접 끌 수 있는 수단이 없고 CrazyGames 플랫폼 음소거에만 의존한다. iOS 오디오 세션이 `.playback`이라 무음 스위치를 무시하고 사용자의 음악을 끊는다.
 
 ## Scope
 - 헤더의 `?` 버튼 옆에 소리 토글 `IconButton`을 둔다. 아이콘은 `Icons.volume_up_rounded` / `Icons.volume_off_rounded`, 툴팁은 "Sound on" / "Sound off"(현재 상태).
