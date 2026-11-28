@@ -21,8 +21,9 @@ class GamePixPlatform extends GamePlatform {
        _now = now ?? DateTime.now,
        _adTimeout = adTimeout;
 
-  /// Shortest gap between two interstitials, and between the game load and
-  /// the first one (GamePix: no ads too often).
+  /// Shortest gap between two interstitials (GamePix: no ads too often; the
+  /// Player also caps them at one every 3 minutes). The first run break may
+  /// show one at once, so reviewers see ads in the Preview.
   static const Duration adCooldown = Duration(minutes: 2);
   static const Duration _loadedTimeout = Duration(seconds: 10);
 
@@ -34,6 +35,7 @@ class GamePixPlatform extends GamePlatform {
   Future<void> _ready = Future<void>.value();
   DateTime? _lastAdAt;
   bool _paused = false;
+  bool _soundOff = false;
   bool _adRunning = false;
   void Function()? _muteListener;
 
@@ -58,12 +60,15 @@ class GamePixPlatform extends GamePlatform {
     try {
       sdk.events.on('pause', (() => _setPaused(true)).toJS);
       sdk.events.on('resume', (() => _setPaused(false)).toJS);
+      // The Player also sends soundOff/soundOn (its mute control) and warns
+      // when the game does not handle them.
+      sdk.events.on('soundOff', (() => _setSoundOff(true)).toJS);
+      sdk.events.on('soundOn', (() => _setSoundOff(false)).toJS);
     } catch (error) {
       debugPrint('GamePix SDK events failed: $error');
       return;
     }
     _sdk = sdk;
-    _lastAdAt = _now();
     // The Player hides its loading bar on loaded(): send it once Flutter has
     // drawn the first frame. Ads and gameplay signals wait for it.
     _ready = _firstFrame()
@@ -160,7 +165,7 @@ class GamePixPlatform extends GamePlatform {
   }
 
   @override
-  bool get isAudioMuted => _paused;
+  bool get isAudioMuted => _paused || _soundOff;
 
   @override
   void setAudioMuteListener(void Function()? listener) {
@@ -173,14 +178,24 @@ class GamePixPlatform extends GamePlatform {
   @override
   String? get shareLink => null;
 
-  void _setPaused(bool paused) {
-    if (paused == _paused) return;
-    _paused = paused;
+  void _setSoundOff(bool off) {
+    if (off == _soundOff) return;
+    _soundOff = off;
+    _notifyMute();
+  }
+
+  void _notifyMute() {
     try {
       _muteListener?.call();
     } catch (error) {
       debugPrint('Audio mute listener failed: $error');
     }
+  }
+
+  void _setPaused(bool paused) {
+    if (paused == _paused) return;
+    _paused = paused;
+    _notifyMute();
   }
 
   static _Sdk? _findSdk() {

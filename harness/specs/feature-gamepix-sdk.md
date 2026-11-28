@@ -25,9 +25,9 @@ GamePix가 SDK 없는 패키지를 게시했지만 "GamePix SDK integration appr
 
 ## Acceptance Criteria
 - S1: GamePix `index.html`이 `window.GamePixConfig = { lifecycle: 'manual' }`을 두고 `https://integration.gamepix.com/sdk/v3/gamepix.sdk.js`를 한 번만, 둘 다 `flutter_bootstrap.js`보다 먼저 불러온다. 다른 외부 script/링크/URL은 없고, 있으면 빌드 스크립트가 실패한다.
-- S2: 어댑터가 `pause`/`resume`을 등록한다. pause는 게임 오디오를 끄고(`isAudioMuted`), resume은 되돌린다. 같은 이벤트가 반복되어도 변화가 없다.
+- S2: 어댑터가 `pause`/`resume`을 등록한다. pause는 게임 오디오를 끄고(`isAudioMuted`), resume은 되돌린다. Player의 `soundOff`/`soundOn`도 같은 방식으로 처리한다. 같은 이벤트가 반복되어도 변화가 없다.
 - S3: `lifecycle.loaded()`는 첫 Flutter 프레임 뒤 한 번, `lifecycle.gameStart()`는 게임 플레이가 시작될 때 `loaded()` 뒤에 보낸다. Player가 응답하지 않아도 10초 뒤 게임이 막히지 않는다.
-- S4: 전면 광고(`ads.interstitial()`)는 기존 `showRunBreakAd` 지점(게임 오버 뒤 새 판)에서만, 게임 로드나 직전 광고 뒤 2분 안에는 나오지 않고, 동시에 두 번 요청하지 않는다. 실패/미송출/120초 무응답이어도 새 판이 시작된다.
+- S4: 전면 광고(`ads.interstitial()`)는 기존 `showRunBreakAd` 지점(게임 오버 뒤 새 판)에서만, 직전 광고 뒤 2분 안에는 나오지 않고(첫 쉬는 지점에서는 바로 나올 수 있고, Player도 3분에 한 번으로 제한한다), 동시에 두 번 요청하지 않는다. 실패/미송출/120초 무응답이어도 새 판이 시작된다.
 - S5: 보상형 광고(`ads.reward()`, Second Wind)는 `success: true`일 때만 보상한다. SDK가 있을 때만 제안한다.
 - S6: 설정은 `getItem`으로 이름을 지정해 읽는 localStorage 항목 하나(`mergecamp.prefs_v1`, GamePix가 여러 게임을 한 origin에서 서비스할 수 있어 게임별로 이름을 붙임)에 저장해 GamePix 저장 동기화가 진행 상황을 복원한다. SDK 이전에 저장한 진행(`flutter.` 키)은 첫 SDK 세션에서 유지되고, 그 키는 지우지 않는다.
 - S7: SDK가 없으면(차단된 script, 직접 연 페이지) 예전 no-op처럼 광고와 기록 등록 안내가 없다.

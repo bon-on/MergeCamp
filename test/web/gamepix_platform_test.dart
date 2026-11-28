@@ -140,16 +140,12 @@ void main() {
     expect(changes, 2);
   });
 
-  test('interstitials keep the cooldown from load and between ads', () async {
+  test('the first run break may show an ad, then the cooldown holds', () async {
     final sdk = _FakeGamePix();
     final platform = newPlatform();
     sdk.platformMuted = () => platform.isAudioMuted;
     await platform.initialize();
 
-    await platform.showRunBreakAd();
-    expect(sdk.calls, isNot(contains('interstitial')));
-
-    clock = clock.add(GamePixPlatform.adCooldown);
     await platform.showRunBreakAd();
     expect(sdk.calls.where((c) => c == 'interstitial'), hasLength(1));
     expect(sdk.mutedDuringAd, isTrue);
@@ -158,6 +154,39 @@ void main() {
     clock = clock.add(const Duration(seconds: 30));
     await platform.showRunBreakAd();
     expect(sdk.calls.where((c) => c == 'interstitial'), hasLength(1));
+
+    clock = clock.add(GamePixPlatform.adCooldown);
+    await platform.showRunBreakAd();
+    expect(sdk.calls.where((c) => c == 'interstitial'), hasLength(2));
+  });
+
+  test('the Player sound off and on mute and restore audio', () async {
+    final sdk = _FakeGamePix();
+    final platform = newPlatform();
+    var changes = 0;
+    platform.setAudioMuteListener(() => changes++);
+    await platform.initialize();
+
+    sdk.handlers['soundOff']!.callAsFunction();
+    expect(platform.isAudioMuted, isTrue);
+    sdk.handlers['soundOn']!.callAsFunction();
+    expect(platform.isAudioMuted, isFalse);
+    expect(changes, 2);
+  });
+
+  test('Player sound off outlasts a pause and an ad', () async {
+    final sdk = _FakeGamePix();
+    final platform = newPlatform();
+    await platform.initialize();
+
+    sdk.handlers['soundOff']!.callAsFunction();
+    sdk.handlers['pause']!.callAsFunction();
+    sdk.handlers['resume']!.callAsFunction();
+    expect(platform.isAudioMuted, isTrue);
+    await platform.showRunBreakAd();
+    expect(platform.isAudioMuted, isTrue);
+    sdk.handlers['soundOn']!.callAsFunction();
+    expect(platform.isAudioMuted, isFalse);
   });
 
   test('rewarded ads pay out only on success', () async {
