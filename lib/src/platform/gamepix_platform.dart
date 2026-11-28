@@ -62,8 +62,15 @@ class GamePixPlatform extends GamePlatform {
       sdk.events.on('resume', (() => _setPaused(false)).toJS);
       // The Player also sends soundOff/soundOn (its mute control) and warns
       // when the game does not handle them.
-      sdk.events.on('soundOff', (() => _setSoundOff(true)).toJS);
-      sdk.events.on('soundOn', (() => _setSoundOff(false)).toJS);
+      final soundOff = (() => _setSoundOff(true)).toJS;
+      final soundOn = (() => _setSoundOff(false)).toJS;
+      sdk.events.on('soundOff', soundOff);
+      sdk.events.on('soundOn', soundOn);
+      // The Player checks the legacy `GamePix.soundOff/soundOn` functions
+      // and warns when they are missing, so declare them as well (both paths
+      // are idempotent).
+      sdk.setProperty('soundOff'.toJS, soundOff);
+      sdk.setProperty('soundOn'.toJS, soundOn);
     } catch (error) {
       debugPrint('GamePix SDK events failed: $error');
       return;

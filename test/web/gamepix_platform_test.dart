@@ -174,6 +174,18 @@ void main() {
     expect(changes, 2);
   });
 
+  test('the legacy GamePix.soundOff/soundOn functions are declared', () async {
+    _FakeGamePix();
+    final platform = newPlatform();
+    await platform.initialize();
+    final sdk = globalContext.getProperty<JSObject>('GamePix'.toJS);
+
+    sdk.getProperty<JSFunction>('soundOff'.toJS).callAsFunction();
+    expect(platform.isAudioMuted, isTrue);
+    sdk.getProperty<JSFunction>('soundOn'.toJS).callAsFunction();
+    expect(platform.isAudioMuted, isFalse);
+  });
+
   test('Player sound off outlasts a pause and an ad', () async {
     final sdk = _FakeGamePix();
     final platform = newPlatform();
