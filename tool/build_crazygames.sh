@@ -73,6 +73,12 @@ if (( total_kb > 50 * 1024 )); then
   exit 1
 fi
 
+# The GamePix adapter is tree-shaken from this bundle (feature-gamepix-sdk).
+if grep -q 'GamePix' "$OUT/main.dart.js"; then
+  echo "error: GamePix adapter code found in the CrazyGames main.dart.js" >&2
+  exit 1
+fi
+
 (cd "$OUT" && zip -qr "$ZIP" .)
 echo "CrazyGames bundle: $OUT ($file_count files, ${total_kb}KB)"
 echo "Upload zip: $ZIP"

@@ -45,7 +45,7 @@ MergeCamp는 iPhone과 Android를 위한 모바일 머지 퍼즐 게임이다. �
 
 ## GamePix 웹 번들
 
-`tool/build_gamepix.sh`를 실행하면 `build/gamepix/`와 업로드용 `build/merge-camp-gamepix.zip`이 생성된다(SDK 없음, 외부 링크/광고/결과 업로드 없음). 자세한 내용은 `docs/gamepix.md`를 참고한다.
+`tool/build_gamepix.sh`를 실행하면 `build/gamepix/`와 업로드용 `build/merge-camp-gamepix.zip`이 생성된다(GamePix SDK v3 포함, 외부 링크/결과 업로드 없음, 광고는 GamePix SDK로만). 자세한 내용은 `docs/gamepix.md`를 참고한다.
 
 ## 소리
 

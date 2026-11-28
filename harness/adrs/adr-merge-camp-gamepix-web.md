@@ -9,6 +9,8 @@ related_specs:
 
 # ADR: GamePix 배포에 SDK 없는 GAMEPIX 빌드 플래그 사용
 
+> 2026-11-28: "SDK 없음"과 no-op 플랫폼 부분은 `adr-gamepix-sdk`가 대체한다. 나머지 결정(빌드 플래그, 외부 링크 금지, 번들 폰트, 상대 경로)은 유효하다.
+
 ## Context
 
 `adr-merge-camp-crazygames-web`는 CrazyGames 배포를 `CRAZYGAMES` 플래그와 SDK 어댑터로 풀었다. GamePix는 서드파티 SDK와 외부 리소스를 허용하지 않으므로 같은 어댑터를 쓸 수 없다. Flutter 웹은 `Roboto` 패밀리가 번들되지 않으면 런타임에 fonts.gstatic.com에서 폰트를 받는다.

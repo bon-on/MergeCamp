@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds the GamePix upload bundle: build/gamepix/ and
 # build/merge-camp-gamepix.zip. See docs/gamepix.md.
-# The bundle is SDK-free: no third-party scripts, no external links, no ads,
-# no network requests (fonts included).
+# The only third-party script is the GamePix SDK v3 (feature-gamepix-sdk):
+# no other scripts, no external links, no other network requests (fonts
+# included).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -26,17 +27,30 @@ perl -0pi -e 's#\s*<nav class="games-nav-bar".*?</nav>##s' "$INDEX"
 perl -pi -e 's#--games-nav-height: calc\([^;]*\);#--games-nav-height: 0px;#' "$INDEX"
 # Template comments carry documentation URLs; they are not needed at runtime.
 perl -0pi -e 's#<!--.*?-->\s*##gs' "$INDEX"
+# GamePix SDK with manual lifecycle, loaded in <head> before the Flutter
+# bootstrap so localStorage sync is active from the game's first read.
+SDK_URL="https://integration.gamepix.com/sdk/v3/gamepix.sdk.js"
+perl -pi -e "s#^(\\s*)</head>#\$1  <script>window.GamePixConfig = { lifecycle: 'manual' };</script>\n\$1  <script src=\"$SDK_URL\"></script>\n\$1</head>#" "$INDEX"
 
 fail() { echo "error: $1" >&2; exit 1; }
 
 grep -q '<base href="./">' "$INDEX" || fail "relative base href missing"
 grep -q -e 'games-nav-bar"' -e 'bon-on.github.io' "$INDEX" && fail "hub navigation link still present in index.html"
 grep -q -e '--games-nav-height: 0px;' "$INDEX" || fail "hub navigation height was not reset"
-grep -qi -e 'crazygames' -e 'gamepix.com' "$INDEX" && fail "portal SDK reference found in index.html"
+grep -qi 'crazygames' "$INDEX" && fail "CrazyGames reference found in index.html"
+[ "$(grep -c -F "<script src=\"$SDK_URL\"></script>" "$INDEX")" = 1 ] || fail "GamePix SDK script missing or duplicated"
+grep -q "window.GamePixConfig = { lifecycle: 'manual' };" "$INDEX" || fail "GamePix manual lifecycle config missing"
+sdk_line=$(grep -n -m1 -F "$SDK_URL" "$INDEX" | cut -d: -f1 || true)
+config_line=$(grep -n -m1 -F 'window.GamePixConfig' "$INDEX" | cut -d: -f1 || true)
+boot_line=$(grep -n -m1 -F 'flutter_bootstrap.js"' "$INDEX" | cut -d: -f1 || true)
+[ "$config_line" -lt "$sdk_line" ] && [ "$sdk_line" -lt "$boot_line" ] \
+  || fail "GamePix config and SDK must precede flutter_bootstrap.js"
 # The inlined engine loader embeds a gstatic CanvasKit fallback URL (dead code
 # while useLocalCanvasKit is true, checked below) and a GitHub issue URL in a
-# warning message; any other URL is an error.
+# warning message; the GamePix SDK URL is checked above. Any other URL is an
+# error.
 sed -e 's#https://www.gstatic.com/flutter-canvaskit##g' \
+    -e "s#$SDK_URL##g" \
     -e 's#https://github.com/flutter/flutter/issues/[0-9]*##g' "$INDEX" \
   | grep -q -E 'https?://' \
   && fail "outbound URL found in index.html"

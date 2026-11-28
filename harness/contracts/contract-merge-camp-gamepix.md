@@ -14,7 +14,7 @@ evidence_files:
 
 ## Goal
 
-같은 Flutter 코드베이스에서 SDK 없이 외부 요청이 없는 GamePix 업로드용 웹 번들을 만든다.
+같은 Flutter 코드베이스에서 GamePix 업로드용 웹 번들을 만든다. 외부 요청은 GamePix SDK v3뿐이다(feature-gamepix-sdk).
 
 ## Done Criteria
 

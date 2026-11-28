@@ -5,9 +5,9 @@ import 'game_platform_factory_stub.dart'
 /// Hooks a distribution portal needs from the game loop.
 ///
 /// Mobile and plain web builds use [NoopGamePlatform]; CrazyGames web builds
-/// (`--dart-define=CRAZYGAMES=true`) use the SDK-backed implementation, and
-/// GamePix web builds (`--dart-define=GAMEPIX=true`) use [NoopGamePlatform.gamePix]
-/// (no SDK, no external network, no ads).
+/// (`--dart-define=CRAZYGAMES=true`) use the CrazyGames SDK adapter, and
+/// GamePix web builds (`--dart-define=GAMEPIX=true`) the GamePix SDK adapter
+/// (feature-gamepix-sdk).
 abstract class GamePlatform {
   const GamePlatform();
 
@@ -53,8 +53,9 @@ class NoopGamePlatform extends GamePlatform {
     this.shareLink = pagesShareLink,
   });
 
-  /// GamePix portal build: SDK-free, no ads, no result upload and no share
-  /// actions (GamePix forbids outbound links).
+  /// Portal behaviour without an SDK: no ads, no result upload and no share
+  /// actions (GamePix forbids outbound links). The GamePix adapter falls back
+  /// to the same behaviour when its SDK is missing.
   const NoopGamePlatform.gamePix()
     : allowsResultRegistration = false,
       shareLink = null;

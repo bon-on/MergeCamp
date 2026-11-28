@@ -219,17 +219,17 @@ void main() {
     expect(platform.isAudioMuted, isFalse);
   });
 
-  test('web sound constructs a browser Audio element per asset', () {
+  test('web sound plays through Web Audio, never HTML Audio elements', () {
+    // Reusing HTML Audio elements stalled frames on mobile (aab3158).
     final originalAudio = globalContext.getProperty<JSAny?>('Audio'.toJS);
     addTearDown(() => globalContext.setProperty('Audio'.toJS, originalAudio));
     globalContext.callMethod(
       'eval'.toJS,
       '''
       globalThis.__audioSources = [];
-      globalThis.__audioPlays = 0;
       globalThis.Audio = class {
         constructor(src) { globalThis.__audioSources.push(src); }
-        play() { globalThis.__audioPlays++; return Promise.resolve(); }
+        play() { return Promise.resolve(); }
       };
       '''
           .toJS,
@@ -239,16 +239,11 @@ void main() {
     sound.play('assets/audio/place.wav');
     sound.play('assets/audio/place.wav');
 
-    final sources = globalContext
-        .getProperty<JSArray<JSString>>('__audioSources'.toJS)
-        .toDart
-        .map((source) => source.toDart)
-        .toList();
-    expect(sources, hasLength(1));
-    expect(sources.single, endsWith('assets/audio/place.wav'));
     expect(
-      globalContext.getProperty<JSNumber>('__audioPlays'.toJS).toDartInt,
-      2,
+      globalContext
+          .getProperty<JSArray<JSString>>('__audioSources'.toJS)
+          .toDart,
+      isEmpty,
     );
   });
 }

@@ -1,6 +1,6 @@
 # GamePix 배포
 
-`--dart-define=GAMEPIX=true`로 빌드하면 SDK 없는 GamePix 번들이 된다. 서드파티 SDK, 외부 링크, 광고, 결과 업로드, 외부 폰트 요청이 모두 없다.
+`--dart-define=GAMEPIX=true`로 빌드하면 GamePix SDK v3(수동 lifecycle, feature-gamepix-sdk)를 불러오는 GamePix 번들이 된다. 그 밖의 서드파티 script, 외부 링크, 결과 업로드, 외부 폰트 요청은 없다. 전면 광고는 게임 오버 뒤 새 판에서 2분 간격으로, 보상형 광고는 Second Wind에서만 나온다.
 
 ## 빌드
 
@@ -14,8 +14,9 @@ tool/build_gamepix.sh
 
 1. `flutter build web --release --base-href / --no-web-resources-cdn --dart-define=GAMEPIX=true`
 2. `<base href="./">`로 바꾸고, 허브 내비게이션 바와 높이를 지우고, 템플릿 주석(문서 URL)을 지운다.
-3. 검사: `crazygames`/`bon-on.github.io`/`http(s)://`가 index.html에 없음, viewport `user-scalable=no`, `touch-action: none`, 번들에 `crazygames-sdk` 없음, `FontManifest.json`에 Roboto, zip 루트의 `index.html`.
-4. 파일 수/크기와 `main.dart.js`의 `crazygames` 문자열 수를 출력한다.
+3. index.html `</head>` 앞에 `window.GamePixConfig = { lifecycle: 'manual' }`과 GamePix SDK script를 넣는다.
+4. 검사: SDK script가 한 번만 bootstrap보다 먼저 있음, `crazygames`/`bon-on.github.io`/SDK 외 `http(s)://`가 index.html에 없음, viewport `user-scalable=no`, `touch-action: none`, 번들에 `crazygames-sdk` 없음, `FontManifest.json`에 Roboto, zip 루트의 `index.html`.
+5. 파일 수/크기와 `main.dart.js`의 `crazygames` 문자열 수를 출력한다.
 
 ## 로컬 확인
 
@@ -26,7 +27,7 @@ cd build && python3 -m http.server 8765
 
 ## 업로드 메모
 
-- SDK integration: none
+- SDK integration: 체크(GamePix SDK v3, 전면/보상형 광고, pause/resume, localStorage 동기화)
 - 아이콘 256x256, 커버 1360x850 (아직 만들지 않음)
 - 방향: 세로 위주(데스크톱에서는 560px 폭 열이 가운데에 표시됨). Desktop/Mobile friendly로 등록한다.
 - 입력: 마우스/터치 탭, 키보드(방향키/WASD, Enter/Space, X, R).
